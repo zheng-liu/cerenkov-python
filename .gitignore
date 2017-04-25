@@ -1,0 +1,9 @@
+*.pyc
+*.aux
+*.log
+*.synctex.gz
+*.key
+*.doc
+misc.*
+.Rhistory
+.DS_Store
