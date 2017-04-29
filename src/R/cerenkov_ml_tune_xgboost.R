@@ -19,16 +19,19 @@
 ## Packages required by this script:
 ##   PRROC, xgboost, Matrix, pbapply
 ##
-## Note:  If you set "flag_locus_sampling=FALSE", you will need the "dismo" package.
+## Packages conditionally required by this script, depending on parameter choices:
+##   dismo
+##
+## R scripts called by this script:
+##   cerenkov_ml_base.R
 ##
 ## Note:  do not use this program with Ranger version 0.6.6 (stability issues); use Ranger 0.6.0 only
-##
 
 ## ============================ define global parameters =============================
 
 g_par <- list(
     num_folds_cross_validation = 10,  
-    num_cv_replications = 12,         
+    num_cv_replications = 24,         
     flag_create_fork_cluster = TRUE,   
     override_num_fork_processes = 64,  
     notify_by_text_msg = TRUE,
@@ -121,7 +124,7 @@ rm(g_feat_osu_matrix_sparse)
 
 ## ============================== make feature reducer function list  =================================
 
-g_feature_reducer_functions_list <- list(PLS=g_feature_reducer_pls)
+g_feature_reducer_functions_list <- list()
 
 
 ## ============================== precompute class balance ratio  =================================

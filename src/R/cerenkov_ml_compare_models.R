@@ -20,10 +20,13 @@
 ## Packages required by this script:
 ##   PRROC, xgboost, ranger, Matrix, pbapply
 ##
-## Note:  If you set "flag_locus_sampling=FALSE", you will need the "dismo" package.
-## 
-##   Note:  do not use this program with Ranger version 0.6.6 (stability issues); use Ranger 0.6.0 only
+## Packages conditionally required by this script, depending on parameter choices:
+##   dismo
 ##
+## R scripts called by this script:
+##   cerenkov_ml_base.R
+## 
+## Note:  do not use this program with Ranger version 0.6.6 (stability issues); use Ranger 0.6.0 only
 
 ## ============================ define global parameters =============================
 
@@ -120,7 +123,7 @@ stopifnot(g_feat_osu_df$label == g_feat_gwava_df$label)
 
 print("loading deepsea data")
 
-load(file="features_deepsea_published.Rdata")
+load(file="features_deepsea.Rdata")
 
 stopifnot(g_feature_matrix_is_OK(g_feat_deepsea_published_df))
 stopifnot(rownames(g_feat_deepsea_published_df) == g_snp_names)
@@ -177,9 +180,6 @@ print("loading DANN scores")
 load("scores_dann.Rdata")
 stopifnot(names(g_scores_vec_dann) == g_snp_names)
 stopifnot(! is.na(g_scores_vec_dann))
-
-## ===== OSU experimental stuff ======
-
 
 ## ============================== assemble final list of feature matrices  =================================
 
@@ -393,9 +393,6 @@ g_workplan_list_gwava_published <- list(list(classifier_feature_matrix_name="fea
                                                                                  sample.fraction=1)))
 
 ## ============================== assemble workplan list  =================================
-
-## TODO: make a "g_check_workplan_list" function that checks for incorrect classifier function
-## names, incorrect feature matrix names, etc.
 
 g_workplan_list <- c(
     g_workplan_list_xgb_OSU,
