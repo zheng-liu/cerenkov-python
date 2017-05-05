@@ -20,7 +20,11 @@
 ## Packages required by this script:
 ##   PRROC, xgboost, Matrix
 ##
-## Note:  If you set "flag_locus_sampling=FALSE", you will need the "dismo" package.
+## Packages conditionally required by this script, depending on parameter choices:
+##   dismo
+##
+## R scripts called by this script:
+##   cerenkov_ml_base.R
 
 ## ============================ define global parameters =============================
 
@@ -175,9 +179,6 @@ g_workplan_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
                                               workplan_set_name="OSU_XGB",
                                               classifier_hyperparameter_list=p_hyp)
                                      })
-
-## TODO: make a "g_check_workplan_list" function that checks for incorrect classifier function
-## names, incorrect feature matrix names, etc.
 
 g_workplan_list <- c(
     g_workplan_list_xgb_OSU

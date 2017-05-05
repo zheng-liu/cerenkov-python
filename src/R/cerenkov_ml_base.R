@@ -13,6 +13,23 @@
 ## 2017.03
 ##
 
+## cerenkov_ml_base.R -- This file defines various functions used in the CERENKOV software.
+##    This file is exclusively function definitions; no evaluations are performed. No function
+##    in this file references any objects in the global environment. This file is loaded
+##    by the various CERENKOV scripts (e.g., cerenkov_ml_compare_models.R) using the "source"
+##    function. At some point this source file will be converted into an R package.
+##
+## Author:  Stephen Ramsey
+## 
+## Packages required by this script:
+##   PRROC
+##
+## Packages conditionally required by this script:
+##   xgboost, Matrix, dismo, ranger, methods
+##
+## Note:  do not use this program with Ranger version 0.6.6 (stability issues); use Ranger 0.6.0 only
+##
+
 ## --------------- Cerenkov-specific functions start here ---------
 
 ## p_workplan_list:  a list of "workplans".  Each workplan is a list with elements:
@@ -58,6 +75,7 @@ g_run_mult_classifs_mult_hyperparams_cv <- function(p_workplan_list,
                                                     p_assign_cases_to_folds(p_num_folds=p_num_folds,
                                                                             p_case_label_vec=p_case_label_vec),
                                                     simplify=FALSE)
+
     replications_folds_list_list <- lapply(data.frame(t(expand.grid(1:p_num_cv_replications,
                                                                1:p_num_folds))),
                                       function(mycol) {
@@ -649,26 +667,6 @@ g_make_classifier_function_passthrough <- function(p_scores_vec, p_get_perf_resu
         ret_list
     }
 }
-
-g_feature_reducer_pls <- function(p_input_feature_matrix,
-                                  p_case_label_vec,
-                                  p_inds_cases_test,
-                                  p_numcomp) {
-    stopifnot( ! is.null(p_numcomp) )
-    
-    if (! suppressWarnings( require(pls, quietly=TRUE) ) ) { stop("package pls is missing") }
-    if (! require(methods, quietly=TRUE)) { stop("package methods is missing") }
-    
-    p_input_feature_matrix_as_df <- data.frame(pls.x=I(p_input_feature_matrix))
-    p_input_feature_matrix_as_df$label <- I(model.matrix(~y-1, data.frame(y=factor(p_case_label_vec))))
-    
-    inds_cases_train <- setdiff(1:length(p_case_label_vec), p_inds_cases_test)
-    
-    pls_model <- cppls(label ~ pls.x, data=p_input_feature_matrix_as_df[inds_cases_train,], ncomp=p_numcomp)
-    
-    pls_pred <- predict(pls_model, p_input_feature_matrix_as_df, type="scores")
-}
-
 
 g_make_hyperparameter_grid_list <- function(p_param_list_values) {
     hyperparams_df <- expand.grid(p_param_list_values, stringsAsFactors=FALSE)

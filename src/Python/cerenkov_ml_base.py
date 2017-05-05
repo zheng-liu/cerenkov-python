@@ -35,3 +35,7 @@ def run_mult_classifs_mult_hyperparams_cv(workplan_list, classifier_functions_li
 # note that XGBoost can tolerate NaN while RF cannot.
 def feature_check(feature_data):
     pass
+
+
+def cerenkov_ml(workplan_list, feature_matrix_list, case_label_vec, number_cv_replications, num_folds, case_fold_assign_method):
+    pass
