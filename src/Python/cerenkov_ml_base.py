@@ -13,6 +13,7 @@
 ## classifier_feature_matrices_list: one feature matrix for each type of feature matrix data strucutre to use **NO CASE LABELS**
 ## case_label_vec: numeric vector containing the feature labels (0 or 1 only)
 
+
 def run_mult_classifs_mult_hyperparams_cv(workplan_list, classifier_functions_list, classifier_feature_matrices_list,
                                           case_label_vec, num_cv_replications, num_folds, feature_reducer_functions_list, assign_case_to_folds):
     ## run multiple classifiers under multiple hyperparameter sets in multiple replication cv folds
@@ -28,3 +29,9 @@ def run_mult_classifs_mult_hyperparams_cv(workplan_list, classifier_functions_li
     if len(np.unique(num_case)) > 1: # check if all feature matrices share same number of cases
         print "------------ ALERT: number of cases in each classifier should be equal! ------------\n"
         exit(2)
+
+
+# check feature matrix contains NaN or not.
+# note that XGBoost can tolerate NaN while RF cannot.
+def feature_check(feature_data):
+    pass
