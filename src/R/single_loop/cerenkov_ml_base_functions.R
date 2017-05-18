@@ -27,7 +27,7 @@ g_run_mult_classifs_mult_hyperparams_cv <- function(p_classifier_list,
                                                     p_feature_reducer_functions_list=NULL,
                                                     p_assign_cases_to_folds) {
 
-    ## get list of unique classifier hyperparameter set type names
+    ## get list of unique classifier hyperparameter set type names 
     classifier_hyperparameter_type_names_unique <- sort(unique(unlist(lapply(p_classifier_list,
                                                                              function(p_classifier) {
                                                                                  p_classifier$classifier_hyperparameter_set_type_name

@@ -13,6 +13,8 @@
 ## classifier_feature_matrices_list: one feature matrix for each type of feature matrix data strucutre to use **NO CASE LABELS**
 ## case_label_vec: numeric vector containing the feature labels (0 or 1 only)
 
+import math, time. thread, sys
+import pp
 
 def run_mult_classifs_mult_hyperparams_cv(workplan_list, classifier_functions_list, classifier_feature_matrices_list,
                                           case_label_vec, num_cv_replications, num_folds, feature_reducer_functions_list, assign_case_to_folds):
@@ -60,5 +62,74 @@ cerenkov_ml(workplan_list, feature_matrix_list, case_label_vec, number_cv_replic
 return: ml_results (auroc, aupvr, avgrank)
 '''
 
-def cerenkov_ml(workplan_list, feature_matrix_list, case_label_vec, number_cv_replications, num_folds, case_fold_assign_method):
-    pass
+def locus_sampling():
+    '''
+        * input: label
+        * output: assigned groups
+    '''
+
+def snp_sampling():
+    '''
+        * input: label
+        * output: assigned groups
+    '''
+
+def cerenkov_ml(method_list, feature_list, label_vec, hyperparameter_list, \
+	            number_cv_replications, number_folds, case_fold_assign_method="SNP", \
+	            feature_reduced=False, ncpus=-1):
+    
+    ''' initializations:
+        
+        * build (method, feature_matrix, case_label) tuples
+        * take number_cv_replications, num_folds
+        * take case_fold_assign_method, select cv assignment approach
+    '''
+
+    num_rep = number_cv_replications
+    num_folds = number_folds
+    label = label_vec
+    num_method = len(method_list)
+    num_feature = len(feature_list)
+
+    # select sampling method
+    if case_fold_assign_method == "LOCUS": # cross validation in locus sampling way
+        sampling = locus_sampling
+    else: # cross validation in SNP centered sampling way
+        sampling = snp_sampling
+    
+    # //TODO think about whether the feature_list[0] must be our method in which the location information are used
+    fold_list = [sampling(feature_list[0], num_rep, num_folds) for i in range(num_method)] # assign folds for each method for num_rep*num_folds folds in total   
+    
+    # //TODO write an if else to control the "feature_reduced" logic
+
+    ''' machine learning in parallelization
+
+        * start parallel python
+        * assign folds using the corresponding sampling
+        * plugin all hyperparameters
+        * train, test models
+        * performance results
+    '''
+    ppservers = ()
+    
+    if ncpus == -1:
+        job_server = pp.Server(ncpus, ppservers=ppservers)
+    else:
+        job_server = pp.Server(ppservers=ppservers)
+
+    
+
+
+
+
+
+
+    
+
+
+
+
+    
+
+
+    
