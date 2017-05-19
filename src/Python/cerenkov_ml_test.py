@@ -1,45 +1,57 @@
-'''
-
-dependencies:
-    progressbar
-    scikit-learn-?
-    xgboost-?
-    pandas-?
-    aws ecs?
-
-//TODO check which versions are those softwares
-
-'''
-
 from cerenkov_ml_base import *
+n_rep = 8
 
-params = {
-    "num_folds_cross_validation": 10,
-    "num_cv_replications": 2,
-    "flag_create_fork_cluster": False,  ## for fig. 3:  TRUE
-    "override_num_fork_processes": 50,  ## for EC2, set to 64; for my MBP, set to 8
-    "notify_by_text_msg": False,
-    "show_progress_bar": True,
-    "flag_locus_sampling": True,        ## set to false if you want SNP-level sampling
-    "flag_xgb_importance": False,       ## if you set this to TRUE, make sure you set num_cv_replications=1 and num_folds_cross_validation=1
-    "random_number_seed": 1337,
-    "nthreads_per_process": 1,
-    "flag_randomize_classifier_order": False,
-    "flag_create_ec2_instances": False  ## don't set this to true if you set "flag_create_fork_cluster" to true
-}
+data_osu = pd.read_csv("features_OSU.tsv", sep="\t")
 
-# //TODO omit the msg_test details "us-west-2:315280700912:ramseylab" and document here
-params["aws_snps_topic_arn"] = "arn:aws:sns:us-west-2:315280700912:ramseylab" if params["notify_by_text_msg"] else ""
+feat_osu = data_osu.drop("label", axis=1)
 
-# //TODO add EC2 configuration code here
+label = data_osu["label"]
+
+fold0 = [(x%10+1) for x in range(len(feat_osu))]
+fold_list = []
+for _ in range(n_rep):
+    np.random.shuffle(fold0)
+    fold = pd.DataFrame(data=fold0, columns=["fold_id"])
+    fold.index = feat_osu.index
+    fold_list.append(fold)
 
 
-# set random seed
-random.seed(params["random_number_seed"])
+hyperparameter = dict(
+    learning_rate=0.1,
+    n_estimators=30,
+    gamma=10,
+    subsample=1,
+    colsample_bytree=0.85,
+    base_score=0.1082121,
+    scale_pos_weight=1,
+    max_depth=6,
+    seed=1337,
+    nthread = 1
+    )
 
-# read data
-print "---------- load OSU data ----------"
-osu_feature = pd.read_csv("XXXXXX.txt") # //TODO update the data file name
-feature_check(osu_feature) # check NaN in feature matrix
+
+method_list = [cerenkov17_test]*n_rep
+feature_list = [feat_osu]*n_rep
+label_vec = label
+hyperparameter_list = [hyperparameter]*n_rep
+fold_assignments = fold_list
 
 
+# cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, fold_assignments, ncpus=1)
+
+# gc.collect()
+
+# cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, fold_assignments, ncpus=2)
+
+# gc.collect()
+
+cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, fold_assignments, ncpus=-1)
+
+gc.collect()
+
+start_time = time.time()
+for i in range(n_rep):
+    method_list[i](feature_list[i], label_vec, hyperparameter_list[i], fold_assignments[i])
+end_time = time.time()
+test_time = end_time - start_time
+print "without parallelization: ", test_time

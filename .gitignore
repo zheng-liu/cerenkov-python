@@ -5,5 +5,7 @@
 *.key
 *.doc
 misc.*
+misc/*
+data/*
 .Rhistory
 .DS_Store
