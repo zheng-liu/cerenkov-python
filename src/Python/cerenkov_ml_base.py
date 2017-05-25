@@ -117,6 +117,7 @@ def cerenkov17_test(feature, label, hyperparameters, folds):
 
     ''' test the distributed machine learning of cerenkov
     '''
+    start_time = time.time()
     K = len(set(folds["fold_id"])) # K-folds for each cv fold
 
     for fold_id in range(1, K+1):
@@ -133,6 +134,13 @@ def cerenkov17_test(feature, label, hyperparameters, folds):
         clf_cerenkov17.fit(X_train, y_train)
 
         y_test_pred = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+
+    end_time = time.time()
+    task_time = end_time - start_time
+    print "single xgb: ", task_time
+    print "y_test_pred", y_test_pred
+    
+    return y_test_pred
 
 
 
@@ -240,7 +248,7 @@ def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, 
         * performance results
     '''
 
-
+    result_list = []
     # init parallel python server
     ppservers = ()
 
@@ -256,11 +264,14 @@ def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, 
     for method, feature in zip(method_list, feature_list):
         for hyperparameters in hyperparameter_list:
             for fold in fold_list:
-                args = (feature, hyperparameters, label, fold)
-                job_server.submit(method, args)
-    
+                args = (feature, label, hyperparameters, fold)
+                result = job_server.submit(method, args)
+                result_list.append(result)
+
     # wait for jobs in all groups to finish
     job_server.wait()
-    
+
     # display result
     job_server.print_stats()
+
+    print "result_list:\n", result_list
