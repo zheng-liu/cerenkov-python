@@ -18,56 +18,25 @@ import pp
 
 import pandas as pd
 import numpy as np
-import xgboost as xgb
-import time
+import xgboost
 import gc
-# from itertools import repeat
+import warnings
 
-# def run_mult_classifs_mult_hyperparams_cv(workplan_list, classifier_functions_list, classifier_feature_matrices_list,
-#                                           case_label_vec, num_cv_replications, num_folds, feature_reducer_functions_list, assign_case_to_folds):
-#     ## run multiple classifiers under multiple hyperparameter sets in multiple replication cv folds
+
+class cerenkov_result():
     
-#     ## //TODO write iterations of "func_lapply_first_level" and "func_lapply_second_level"
+    ''' Define the cerenkov operations
 
-#     ## //TODO sort the classifier hyperparameter sets
-#     ''' classifier_hyperparameter_type_names_unique <- sort(unique(unlist(lapply(p_workplan_list, function(p_workplan) { p_workplan$classifier_hyperparameter_set_type_name })))) '''
-    
-#     ## we need to know how many cases there are, in order to assign the cases to cross-validation folds
-#     ## if some feature matrix share different number of entries, there should be alert
-#     num_case = [len(feature_matrix) for feature_matrix in classifier_feature_matrices_list]
-#     if len(np.unique(num_case)) > 1: # check if all feature matrices share same number of cases
-#         print "------------ ALERT: number of cases in each classifier should be equal! ------------\n"
-#         exit(2)
+        * initial
+        * 
+        * 
+    '''
+    def __init__(self):
+        self.result = []
 
-
-# # check feature matrix contains NaN or not.
-# # note that XGBoost can tolerate NaN while RF cannot.
-# def feature_check(feature_data):
-#     pass
-
-
-# def cerenkov_ml(workplan_list, feature_matrix_list, case_label_vec, number_cv_replications, num_folds, case_fold_assign_method):
-#     pass
-
-# ''' get_avgrank: calculate the average rank of regulatory SNP in its cluster
-# get_avgrank()
-
-
-# '''
-
-
-
-# ''' cerenkov_ml: machine learning main function in CERENKOV project
-# cerenkov_ml(workplan_list, feature_matrix_list, case_label_vec, number_cv_replications, num_folds, case_fold_assign_method)
-#     workplan_list: a list of (classifier_name, classifier_function, hyperparameter_set_name, hyperparameter_set) tuple.
-#     feature_matrix_list: (feature_matrix_name, feature_matrix) tuple.
-#     case_label_vec: case labels for each entry in feature matrix.
-#     num_cv_replications: number of cross-validation replications.
-#     num_folds: number of folds for each of the cross-validation.
-#     case_fold_assign_method: the method of assigning each case to folds (locus sampling, SNP based sampling, etc).
-
-# return: ml_results (auroc, aupvr, avgrank)
-# '''
+    def append(new_result):
+        # append ml feedback into result list
+        self.result.append(new_result)
 
 def locus_sampling():
     '''
@@ -130,15 +99,13 @@ def cerenkov17_test(feature, label, hyperparameters, folds):
         X_train = feature.loc[train_index, :]
         y_train = label.loc[train_index].tolist()
 
-        clf_cerenkov17 = xgb.XGBClassifier(**hyperparameters)
+        clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
         clf_cerenkov17.fit(X_train, y_train)
 
         y_test_pred = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
 
     end_time = time.time()
     task_time = end_time - start_time
-    print "single xgb: ", task_time
-    print "y_test_pred", y_test_pred
     
     return y_test_pred
 
@@ -210,14 +177,14 @@ def cerenkov_ml(method_list, feature_list, label_vec, hyperparameter_list, \
         for hyperparameters in hyperparameter_list:
             for fold in fold_list:
                 args = (feature, hyperparameters, label, fold)
-                job_server.submit(method, args, callback=result.add)
+                job_server.submit(method, args)
     
     # wait for jobs in all groups to finish
     job_server.wait()
     
     # display result
     job_server.print_stats()
-    
+
 def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, fold_list, ncpus=-1):
     # //TODO write all the checks
     ''' check input
@@ -225,8 +192,8 @@ def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, 
         * check if each method has a feature matrix
         * check if ncpus > 0
     '''
-
     
+
 
     ''' initializations:
         
@@ -247,8 +214,9 @@ def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, 
         * train, test models
         * performance results
     '''
-
-    result_list = []
+    
+    jobs = []
+    result = []
     # init parallel python server
     ppservers = ()
 
@@ -259,19 +227,20 @@ def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, 
         job_server = pp.Server(ncpus, ppservers=ppservers)
         print "Starting with ", job_server.get_ncpus(), "CPUs"
 
-
     # submit jobs to server
-    for method, feature in zip(method_list, feature_list):
-        for hyperparameters in hyperparameter_list:
-            for fold in fold_list:
-                args = (feature, label, hyperparameters, fold)
-                result = job_server.submit(method, args)
-                result_list.append(result)
+    for method, feature, hyperparameters, fold in zip(method_list, feature_list, hyperparameter_list, fold_list):
+        args = (feature, label, hyperparameters, fold)
+        # job_server.submit(method, args, modules=("time","pandas","numpy","xgboost"), callback=cr.append)
+        jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost")))
+        print "a job submitted"
 
-    # wait for jobs in all groups to finish
-    job_server.wait()
+    # # wait for jobs in all groups to finish
+    # job_server.wait()
+
+    for f in jobs:
+        result.append(f())
 
     # display result
     job_server.print_stats()
 
-    print "result_list:\n", result_list
+    return result

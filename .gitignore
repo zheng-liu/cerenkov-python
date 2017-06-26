@@ -7,5 +7,6 @@
 misc.*
 misc/*
 data/*
+workspace/*
 .Rhistory
 .DS_Store
