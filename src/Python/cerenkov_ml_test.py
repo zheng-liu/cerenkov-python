@@ -9,22 +9,20 @@ import gc
 from cerenkov_ml_base import *
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
+np.random.seed(1337)
 n_rep = 2
+n_fold = 10
 
 data_osu = pd.read_csv("features_OSU.tsv", sep="\t")
-
 feat_osu = data_osu.drop("label", axis=1)
-
 label = data_osu["label"]
 
-fold0 = [(x%10+1) for x in range(len(feat_osu))]
-fold_list = []
-for _ in range(n_rep):
-    np.random.shuffle(fold0)
-    fold = pd.DataFrame(data=fold0, columns=["fold_id"])
-    fold.index = feat_osu.index
-    fold_list.append(fold)
+# //TODO go on testing the locus_sampling
+# feat = locus_group(data_osu)
+# print feat["group_id"]
 
+
+fold_list = snp_sampling(label, n_rep, n_fold)
 
 hyperparameter = dict(
     learning_rate=0.1,
@@ -64,28 +62,9 @@ print "**********************without parallel result**********************\n"
 print "without parallelization: ", test_time
 print result_list_unparallel
 
-
-
-
-# file = open("parallel_unparallel.txt", "w")
-# file.write("parallel:\n")
-# for r in result_list_parallel:
-#     file.write("%s\n" % r)
-# file.write("unparallel:\n")
-# for r in result_list_unparallel:
-#     file.write("%s\n" % r)
-# file.close()
-
 print np.concatenate(result_list_parallel, axis=1)
 
 result_parallel = np.concatenate(result_list_parallel, axis=1)
 result_unparallel = np.concatenate(result_list_unparallel, axis=1)
 np.savetxt("parallel.txt",result_parallel, delimiter="\t")
 np.savetxt("unparallel.txt",result_unparallel, delimiter="\t")
-
-# start_time = time.time()
-# result = cerenkov17_test(feature_list[0], label_vec, hyperparameter_list[0], fold_assignments[0])
-# print result
-# end_time = time.time()
-# test_time = end_time - start_time
-# print "without parallelization: ", test_time

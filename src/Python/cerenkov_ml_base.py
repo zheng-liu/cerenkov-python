@@ -38,19 +38,61 @@ class cerenkov_result():
         # append ml feedback into result list
         self.result.append(new_result)
 
-def locus_sampling():
-    '''
-        * input: label
-        * output: assigned groups
-    '''
-    pass
+def locus_group(feat_mtx, cutoff_bp=50000):
 
-def snp_sampling():
+    ''' distribute each SNP into a group and give each SNP a group ID
+        * input: feature matrix
+        * output: feature matrix with group id
     '''
-        * input: label
+    feat = feat_mtx # //TODO check if assigning value by "=" will have reference
+
+    feat["group_id"] = ""
+    chromSet = [str(i) for i in range(1,23)]+["X"]
+
+    for chrom in chromSet:
+        chrom_name = "chromchr"+chrom
+        SNP_chrom = feat.loc[feat[chrom_name]==1]
+        SNP_chrom = SNP_chrom.sort(["normChromCoord"], ascending=True) # //TODO need to add a "ChromCoord" column into feature matrix, since the coordinate is normalized.
+        SNP_chrom["group_id"] = SNP_chrom["normChromCoord"]*100000000 - SNP_chrom["normChromCoord"].shift()*100000000 # calculate the difference of adjacent ChromCoord
+        SNP_chrom["group_id"][0] = 1.0 # fill in the missing first difference of ChromCoord
+        SNP_chrom["group_id"] = SNP_chrom["group_id"] > cutoff_bp # True if distance > cutoff_bp; else False
+        SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(int) # transform to integer
+        SNP_chrom["group_id"] = SNP_chrom["group_id"].cumsum(axis=0) # cumsum the "group_id" column
+        SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(str)
+        SNP_chrom["group_id"] = chrom + "_" + SNP_chrom["group_id"] # add chrom prefix to group id
+        feat["group_id"][SNP_chrom.index] = SNP_chrom["group_id"] # assign values back to feature matrix
+
+    return feat
+
+def locus_sampling(feat_mtx, slope=0.5):
+    '''
+        * input: label (Pandas DataFrame with rsnp id as index)
         * output: assigned groups
     '''
-    pass
+    label = feat_mtx["label"]
+    n_label = len(label)
+
+    
+
+
+def snp_sampling(label, n_rep, n_fold):
+    '''
+        * input: label (Pandas DataFrame with rsnp id as index)
+        * output: assigned groups
+    '''
+    # //TODO think about whether we need to balance positive-negative case numbers in each fold, or totally random?
+    fold_list = []
+    n_label = len(label)
+    
+    fold0 = [(x%n_fold+1) for x in range(n_label)] # initial fold: 1,2,3,4...,n_label
+
+    for _ in range(n_rep):
+        np.random.shuffle(fold0)
+        fold = pd.DataFrame(data=fold0, columns=["fold_id"])
+        fold.index = label.index
+        fold_list.append(fold)
+    
+    return fold_list
 
 def cerenkov17(feature, label, hyperparameters, folds, case_fold_assign_method):
     
@@ -76,10 +118,9 @@ def cerenkov17(feature, label, hyperparameters, folds, case_fold_assign_method):
         y_test_pred = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
         
         if case_fold_assign_method == "LOCUS":
-            avgrank = get_avgrank(y_test, y_test_pred, locus_table) 
+            avgrank = get_avgrank(y_test, y_test_pred, locus_table)
         else:
             aupvr = get_aupvr(y_test, y_test_pred)
-
 
 
 def cerenkov17_test(feature, label, hyperparameters, folds):
