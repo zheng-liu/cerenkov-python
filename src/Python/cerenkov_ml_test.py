@@ -10,19 +10,19 @@ from cerenkov_ml_base import *
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 np.random.seed(1337)
-n_rep = 2
+n_rep = 4
 n_fold = 10
 
 data_osu = pd.read_csv("features_OSU.tsv", sep="\t")
+coord = pd.read_csv("coord.txt", sep="\t")
+data_osu.index = coord.index # //TODO to ensure data_osu is already the "SNP ID secure" version
 feat_osu = data_osu.drop("label", axis=1)
 label = data_osu["label"]
 
-# //TODO go on testing the locus_sampling
-# feat = locus_group(data_osu)
-# print feat["group_id"]
-
-
-fold_list = snp_sampling(label, n_rep, n_fold)
+# fold_list = locus_sampling(data_osu, coord, n_fold)
+# print fold_list
+fold_list = snp_sampling(data_osu, n_rep, n_fold)
+print fold_list
 
 hyperparameter = dict(
     learning_rate=0.1,
