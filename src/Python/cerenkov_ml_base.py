@@ -15,7 +15,7 @@
 
 import math, time, thread, sys
 import pp
-
+from numpy.random import RandomState
 import pandas as pd
 import numpy as np
 import xgboost
@@ -65,7 +65,7 @@ def locus_group(feat_mtx, coord_mtx, cutoff_bp):
     del feat["Coord"]
     return feat
 
-def locus_sampling(feat_mtx, coord_mtx, n_fold, cutoff_bp=50000, slope_allowed=0.5):
+def locus_sampling(feat_mtx, coord_mtx, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, seed=1337):
 
     '''
         * input: label (Pandas DataFrame with rsnp id as index)
@@ -75,14 +75,16 @@ def locus_sampling(feat_mtx, coord_mtx, n_fold, cutoff_bp=50000, slope_allowed=0
     feat = locus_group(feat_mtx, coord_mtx, cutoff_bp)
     label = feat_mtx["label"] # //TODO check if label necessary
     n_case = len(feat_mtx)
-    n_pos = len(feat_mtx["label"].nonzero())
+    n_pos = np.sum(feat_mtx["label"])
     max_fold_case_num = math.ceil((1 + slope_allowed) * n_case / n_fold)
     max_fold_pos_num = math.ceil((1 + slope_allowed) * max_fold_case_num * n_pos / n_case)
     # fold_assignment = {str(i):[] for i in range(n_fold)} # initialize a fold assignment
     fold_case_num = [0 for i in range(n_fold)] # initialize a fold case number list
     fold_pos_num = [0 for i in range(n_fold)] # initialize a fold positive case number list
-    fold = pd.DataFrame(data=[0 for i in range(n_case)], columns=["fold_id"])
-    fold.index = feat_mtx.index
+    # fold = pd.DataFrame(data=[0 for i in range(n_case)], columns=["fold_id"])
+    # fold.index = feat_mtx.index
+    fold_list = []
+
     # assign groups to folds
     for group in feat.groupby("group_id"):
         
@@ -94,31 +96,42 @@ def locus_sampling(feat_mtx, coord_mtx, n_fold, cutoff_bp=50000, slope_allowed=0
     # assign each group    
     group_case = [group for group in feat.groupby("group_id")]
     group_case.sort(key=lambda x: len(x[1]), reverse=True) # sort the group case according to number of elements each group
-    
-    for group in group_case:
 
-        group_count = len(group[1])
-        group_pos_count = len(group[1]["label"].nonzero())
-        ind_allowed = [i for i in range(n_fold) if fold_case_num[i] + group_count < max_fold_case_num and fold_pos_num[i] + group_pos_count <= max_fold_pos_num ]
+    for i_rep in range(n_rep):
         
-        # sample from allowed indexes
-        if len(ind_allowed) > 1:
+        rs = RandomState(seed+i_rep)
+        fold = pd.DataFrame(data=[0 for i in range(n_case)], columns=["fold_id"])
+        fold.index = feat_mtx.index
 
-            # ind_selected = np.random.choice(ind_allowed, size=1, p=[(1.0 - (fold_case_num[i]*1.0 / max_fold_case_num) * (1.0 - (fold_pos_num[i]*1.0 / max_fold_pos_num))) for i in ind_allowed])
-            probs = np.array([(1.0 - (fold_case_num[i]*1.0 / max_fold_case_num) * (1.0 - (fold_pos_num[i]*1.0 / max_fold_pos_num))) for i in ind_allowed])
-            norm_probs = probs / probs.sum()
-            ind_selected = np.random.choice(ind_allowed, size=1, p=norm_probs)
-        else:
-            ind_selected = ind_allowed
+        for group in group_case:
+
+            group_count = len(group[1])
+            group_pos_count = np.sum(group[1]["label"])
+
+            ind_allowed = [i for i in range(n_fold) if fold_case_num[i] + group_count <= max_fold_case_num and fold_pos_num[i] + group_pos_count <= max_fold_pos_num ]
+
+            # sample from allowed indexes
+            if len(ind_allowed) > 1:
+                probs = np.array([(1.0 - (fold_case_num[i]*1.0 / max_fold_case_num) * (1.0 - (fold_pos_num[i]*1.0 / max_fold_pos_num))) for i in ind_allowed])
+                norm_probs = probs / probs.sum() # np.random.choice need probabilities summed up to 1.0
+                ind_selected = rs.choice(ind_allowed, size=1, p=norm_probs)[0]
+            else:
+                ind_selected = ind_allowed[0]
+
+            # fold_assignment[str(ind_selected)].extend(group[1].index)
+            fold.ix[group[1].index, "fold_id"] = ind_selected + 1
+            fold_case_num[ind_selected] += group_count
+            fold_pos_num[ind_selected] += group_pos_count
+
+        if 0 in fold["fold_id"]:
+            print "[ERROR INFO] Some SNP is not assigned to any fold!"
+            sys.exit()
+        fold_list.append(fold)
         
-        # fold_assignment[str(ind_selected)].extend(group[1].index)
-        fold.ix[group[1].index, "fold_id"] = ind_selected + 1
+        fold_case_num = [0] * n_fold
+        fold_pos_num = [0] * n_fold
 
-    if 0 in fold["fold_id"]:
-        print "[ERROR INFO] Some SNP is not assigned to any fold!"
-        sys.exit()
-    
-    return fold
+    return fold_list
 
 
 def snp_sampling(feat_mtx, n_rep, n_fold):
@@ -199,7 +212,7 @@ def cerenkov17_test(feature, label, hyperparameters, folds):
 
 
 def cerenkov_ml(method_list, feature_list, label_vec, hyperparameter_list, \
-                number_cv_replications, number_folds, case_fold_assign_method="SNP", \
+                number_cv_replications, number_folds, case_assignment_method="SNP", \
                 feature_reduced=False, ncpus=-1):
     # //TODO write all the checks
     ''' check input
@@ -208,13 +221,11 @@ def cerenkov_ml(method_list, feature_list, label_vec, hyperparameter_list, \
         * check if ncpus > 0
     '''
 
-    
-
     ''' initializations:
         
         * build (method, feature_matrix, case_label) tuples
         * take number_cv_replications, num_folds
-        * take case_fold_assign_method, select cv assignment approach
+        * take case_assignment_method, select cv assignment approach
     '''
 
     label = label_vec
@@ -224,10 +235,12 @@ def cerenkov_ml(method_list, feature_list, label_vec, hyperparameter_list, \
     num_feature = len(feature_list)
 
     # select sampling method
-    if case_fold_assign_method == "LOCUS": # cross validation in locus sampling way
+    if case_assignment_method == "LOCUS": # cross validation in locus sampling way
         sampling = locus_sampling
-    else: # cross validation in SNP centered sampling way
+    elif case_assignment_method == "SNP": # cross validation in SNP centered sampling way
         sampling = snp_sampling
+    else:
+        print "[ERROR INFO] Currently only \"LOCUS\" and \"SNP\" assignments allowed!"
     
     # //TODO think about whether the feature_list[0] must be our method in which the location information are used
     fold_list = [sampling(feature_list[0], num_rep, num_folds) for i in range(num_method)] # assign folds for each method for num_rep*num_folds folds in total   
