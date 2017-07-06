@@ -19,9 +19,9 @@ from numpy.random import RandomState
 import pandas as pd
 import numpy as np
 import xgboost
+import sklearn
 import gc
 import warnings
-
 
 class cerenkov_result():
     
@@ -50,8 +50,8 @@ def locus_group(feat_mtx, coord_mtx, cutoff_bp):
     chromSet = [str(i) for i in range(1,23)]+["X"]
 
     for chrom in chromSet:
-        chrom_name = "chr" + chrom
-        SNP_chrom = feat.loc[feat["chrom"]==chrom_name]
+        chrom_name = "chromchr" + chrom
+        SNP_chrom = feat.loc[feat[chrom_name]==1]
         SNP_chrom = SNP_chrom.sort_values(["Coord"], ascending=True) # //TODO need to add a "ChromCoord" column into feature matrix, since the coordinate is normalized.
         SNP_chrom["group_id"] = SNP_chrom["Coord"] - SNP_chrom["Coord"].shift() # calculate the difference of adjacent ChromCoord
         SNP_chrom["group_id"][0] = 1.0 # fill in the missing first difference of ChromCoord
@@ -153,6 +153,7 @@ def snp_sampling(feat_mtx, n_rep, n_fold):
     
     return fold_list
 
+
 def cerenkov17(feature, label, hyperparameters, folds, case_fold_assign_method):
     
     ''' cerenkov17 takes in the (feature, label, hyperparameters, fold) 4-element tuple, and output the performance.
@@ -162,25 +163,34 @@ def cerenkov17(feature, label, hyperparameters, folds, case_fold_assign_method):
     K = len(set(folds)) # K-folds for each cv fold
 
     for fold_id in range(1, K+1):
-        test_index = folds[folds[fold_id] == fold_id].index
-        train_index = folds[folds[fold_id] != fold_id] .index
+        test_index = folds[folds["fold_id"] == fold_id].index
+        train_index = folds[folds["fold_id"] != fold_id].index
 
         X_test = feature.loc[test_index, :]
-        y_test = label.loc[test_index, :] # //TODO we should guarantee that the y_test should have index as SNP IDs
+        y_test = label.loc[test_index].tolist() # //TODO we should guarantee that the y_test should have index as SNP IDs
 
         X_train = feature.loc[train_index, :]
-        y_train = label.loc[train_index, :]
+        y_train = label.loc[train_index].tolist()
 
-        clf_cerenkov17 = xgb.XGBClassifier(**hyperparameters)
+        clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
         clf_cerenkov17.fit(X_train, y_train)
 
-        y_test_pred = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
-        
-        if case_fold_assign_method == "LOCUS":
-            avgrank = get_avgrank(y_test, y_test_pred, locus_table)
-        else:
-            aupvr = get_aupvr(y_test, y_test_pred)
+        y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
 
+        if case_fold_assign_method == "LOCUS":
+            # avgrank = get_avgrank(y_test, y_test_pred, locus_table)
+            # //TODO add AVGRANK calculation here
+            result = {"avgrank": avgrank}
+        else:
+            fpr, tpr, _ = sklearn.metrics.roc_curve(y_test,y_test_probs)
+            auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+
+            precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+            aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+            
+            result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
+    
+    return result
 
 def cerenkov17_test(feature, label, hyperparameters, folds):
 
@@ -207,8 +217,8 @@ def cerenkov17_test(feature, label, hyperparameters, folds):
     end_time = time.time()
     task_time = end_time - start_time
     
-    return y_test_pred
-
+    fpr, tpr, auroc = get_auroc(y_test, y_test_pred)
+    return fpr, tpr, auroc
 
 
 def cerenkov_ml(method_list, feature_list, label_vec, hyperparameter_list, \
@@ -329,9 +339,9 @@ def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, 
 
     # submit jobs to server
     for method, feature, hyperparameters, fold in zip(method_list, feature_list, hyperparameter_list, fold_list):
-        args = (feature, label, hyperparameters, fold)
+        args = (feature, label, hyperparameters, fold, "SNP")
         # job_server.submit(method, args, modules=("time","pandas","numpy","xgboost"), callback=cr.append)
-        jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost")))
+        jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost", "sklearn")))
         print "a job submitted"
 
     # # wait for jobs in all groups to finish
