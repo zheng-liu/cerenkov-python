@@ -16,12 +16,15 @@
 import math, time, thread, sys
 import pp
 from numpy.random import RandomState
-import pandas as pd
+import pandas
 import numpy as np
 import xgboost
 import sklearn
 import gc
 import warnings
+
+# warnings.filterwarnings("ignore", category=DeprecationWarning)
+# pd.set_option('mode.chained_assignment', None)
 
 class cerenkov_result():
     
@@ -38,41 +41,73 @@ class cerenkov_result():
         # append ml feedback into result list
         self.result.append(new_result)
 
-def locus_group(feat_mtx, coord_mtx, cutoff_bp):
+# def locus_group(feat_mtx, coord_mtx, cutoff_bp):
+
+#     ''' distribute each SNP into a group and give each SNP a group ID
+#         * input: feature matrix
+#         * output: feature matrix with group id
+#     '''
+#     feat = feat_mtx # //TODO check if assigning value by "=" will have reference
+#     feat["Coord"] = coord_mtx["coord"]
+#     feat["group_id"] = ""
+#     chromSet = [str(i) for i in range(1,23)]+["X"]
+
+#     for chrom in chromSet:
+#         chrom_name = "chromchr" + chrom
+#         SNP_chrom = feat.loc[feat[chrom_name]==1]
+#         SNP_chrom = SNP_chrom.sort_values(["Coord"], ascending=True) # //TODO need to add a "ChromCoord" column into feature matrix, since the coordinate is normalized.
+#         SNP_chrom["group_id"] = SNP_chrom["Coord"] - SNP_chrom["Coord"].shift() # calculate the difference of adjacent ChromCoord
+#         SNP_chrom["group_id"][0] = 1.0 # fill in the missing first difference of ChromCoord
+#         SNP_chrom["group_id"] = SNP_chrom["group_id"] > cutoff_bp # True if distance > cutoff_bp; else False
+#         SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(int) # transform to integer
+#         SNP_chrom["group_id"] = SNP_chrom["group_id"].cumsum(axis=0) # cumsum the "group_id" column
+#         SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(str)
+#         SNP_chrom["group_id"] = chrom + "_" + SNP_chrom["group_id"] # add chrom prefix to group id
+#         feat["group_id"][SNP_chrom.index] = SNP_chrom["group_id"] # assign values back to feature matrix
+    
+#     del feat["Coord"]
+#     return feat
+
+
+def locus_group(feat_mtx, cutoff_bp):
 
     ''' distribute each SNP into a group and give each SNP a group ID
         * input: feature matrix
         * output: feature matrix with group id
     '''
     feat = feat_mtx # //TODO check if assigning value by "=" will have reference
-    feat["Coord"] = coord_mtx["coord"]
+    feat["coord"] = feat_mtx.index.get_level_values("coord")
     feat["group_id"] = ""
     chromSet = [str(i) for i in range(1,23)]+["X"]
 
     for chrom in chromSet:
         chrom_name = "chromchr" + chrom
         SNP_chrom = feat.loc[feat[chrom_name]==1]
-        SNP_chrom = SNP_chrom.sort_values(["Coord"], ascending=True) # //TODO need to add a "ChromCoord" column into feature matrix, since the coordinate is normalized.
-        SNP_chrom["group_id"] = SNP_chrom["Coord"] - SNP_chrom["Coord"].shift() # calculate the difference of adjacent ChromCoord
-        SNP_chrom["group_id"][0] = 1.0 # fill in the missing first difference of ChromCoord
+        SNP_chrom = SNP_chrom.sort_values(["coord"], ascending=True) # //TODO need to add a "ChromCoord" column into feature matrix, since the coordinate is normalized.
+        SNP_chrom["group_id"] = SNP_chrom["coord"] - SNP_chrom["coord"].shift() # calculate the difference of adjacent ChromCoord
+        # SNP_chrom["group_id"][0] = 1.0 # fill in the missing first difference of ChromCoord
+        SNP_chrom.ix[0,"group_id"] = 1.0 # fill in the missing first difference of ChromCoord
         SNP_chrom["group_id"] = SNP_chrom["group_id"] > cutoff_bp # True if distance > cutoff_bp; else False
         SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(int) # transform to integer
         SNP_chrom["group_id"] = SNP_chrom["group_id"].cumsum(axis=0) # cumsum the "group_id" column
         SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(str)
         SNP_chrom["group_id"] = chrom + "_" + SNP_chrom["group_id"] # add chrom prefix to group id
-        feat["group_id"][SNP_chrom.index] = SNP_chrom["group_id"] # assign values back to feature matrix
-    
-    del feat["Coord"]
+        # feat["group_id"][SNP_chrom.index] = SNP_chrom["group_id"] # assign values back to feature matrix
+        feat.loc[SNP_chrom.index, "group_id"] = SNP_chrom["group_id"] # assign values back to feature matrix
+
+    del feat["coord"]
     return feat
 
-def locus_sampling(feat_mtx, coord_mtx, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, seed=1337):
+
+
+def locus_sampling(feat_mtx, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, seed=1337):
 
     '''
         * input: label (Pandas DataFrame with rsnp id as index)
         * output: assigned groups
     '''
 
-    feat = locus_group(feat_mtx, coord_mtx, cutoff_bp)
+    feat = locus_group(feat_mtx, cutoff_bp)
     label = feat_mtx["label"] # //TODO check if label necessary
     n_case = len(feat_mtx)
     n_pos = np.sum(feat_mtx["label"])
@@ -87,20 +122,19 @@ def locus_sampling(feat_mtx, coord_mtx, n_rep, n_fold, cutoff_bp=50000, slope_al
 
     # assign groups to folds
     for group in feat.groupby("group_id"):
-        
         # check if there is at least 1 rSNP in each group
         if group[1]["label"].nonzero() is None:
             print "[ERROR INFO] There is no positive cases in group ", group[0]
             sys.exit()
 
-    # assign each group    
+    # assign each group
     group_case = [group for group in feat.groupby("group_id")]
     group_case.sort(key=lambda x: len(x[1]), reverse=True) # sort the group case according to number of elements each group
 
     for i_rep in range(n_rep):
         
         rs = RandomState(seed+i_rep)
-        fold = pd.DataFrame(data=[0 for i in range(n_case)], columns=["fold_id"])
+        fold = pandas.DataFrame(data=[[0,"0-0"] for i in range(n_case)], columns=["fold_id", "group_id"])
         fold.index = feat_mtx.index
 
         for group in group_case:
@@ -109,7 +143,7 @@ def locus_sampling(feat_mtx, coord_mtx, n_rep, n_fold, cutoff_bp=50000, slope_al
             group_pos_count = np.sum(group[1]["label"])
 
             ind_allowed = [i for i in range(n_fold) if fold_case_num[i] + group_count <= max_fold_case_num and fold_pos_num[i] + group_pos_count <= max_fold_pos_num ]
-
+            
             # sample from allowed indexes
             if len(ind_allowed) > 1:
                 probs = np.array([(1.0 - (fold_case_num[i]*1.0 / max_fold_case_num) * (1.0 - (fold_pos_num[i]*1.0 / max_fold_pos_num))) for i in ind_allowed])
@@ -118,14 +152,17 @@ def locus_sampling(feat_mtx, coord_mtx, n_rep, n_fold, cutoff_bp=50000, slope_al
             else:
                 ind_selected = ind_allowed[0]
 
-            # fold_assignment[str(ind_selected)].extend(group[1].index)
             fold.ix[group[1].index, "fold_id"] = ind_selected + 1
             fold_case_num[ind_selected] += group_count
             fold_pos_num[ind_selected] += group_pos_count
+        
+        fold["group_id"] = feat["group_id"]
 
+        # check if all SNP are assigned
         if 0 in fold["fold_id"]:
             print "[ERROR INFO] Some SNP is not assigned to any fold!"
             sys.exit()
+
         fold_list.append(fold)
         
         fold_case_num = [0] * n_fold
@@ -147,7 +184,7 @@ def snp_sampling(feat_mtx, n_rep, n_fold):
 
     for _ in range(n_rep):
         np.random.shuffle(fold0)
-        fold = pd.DataFrame(data=fold0, columns=["fold_id"])
+        fold = pandas.DataFrame(data=fold0, columns=["fold_id"])
         fold.index = feat_mtx.index
         fold_list.append(fold)
     
@@ -160,7 +197,9 @@ def cerenkov17(feature, label, hyperparameters, folds, case_fold_assign_method):
         
         * 
     '''
-    K = len(set(folds)) # K-folds for each cv fold
+    K = len(set(folds["fold_id"])) # K-folds for each cv fold
+
+    result_list = []
 
     for fold_id in range(1, K+1):
         test_index = folds[folds["fold_id"] == fold_id].index
@@ -180,7 +219,16 @@ def cerenkov17(feature, label, hyperparameters, folds, case_fold_assign_method):
         if case_fold_assign_method == "LOCUS":
             # avgrank = get_avgrank(y_test, y_test_pred, locus_table)
             # //TODO add AVGRANK calculation here
+            rank_test = pandas.DataFrame(data=y_test_probs, columns=["probs"])
+            print "rank_test 1:", rank_test
+            print folds
+            rank_test["group_id"] = folds[folds["fold_id"] == fold_id]["group_id"].values
+            rank_test["label"] = y_test
+            rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+            print "rank_test 2:", rank_test
+            avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
             result = {"avgrank": avgrank}
+            result_list.append(result)
         else:
             fpr, tpr, _ = sklearn.metrics.roc_curve(y_test,y_test_probs)
             auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
@@ -189,36 +237,37 @@ def cerenkov17(feature, label, hyperparameters, folds, case_fold_assign_method):
             aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
             
             result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
+            result_list.append(result)
+
+    return result_list
+
+# def cerenkov17_test(feature, label, hyperparameters, folds):
+
+#     ''' test the distributed machine learning of cerenkov
+#     '''
+#     start_time = time.time()
+#     K = len(set(folds["fold_id"])) # K-folds for each cv fold
+
+#     for fold_id in range(1, K+1):
+#         test_index = folds[folds["fold_id"] == fold_id].index
+#         train_index = folds[folds["fold_id"] != fold_id].index
+
+#         X_test = feature.loc[test_index, :]
+#         y_test = label.loc[test_index].tolist() # //TODO we should guarantee that the y_test should have index as SNP IDs
+
+#         X_train = feature.loc[train_index, :]
+#         y_train = label.loc[train_index].tolist()
+
+#         clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
+#         clf_cerenkov17.fit(X_train, y_train)
+
+#         y_test_pred = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+
+#     end_time = time.time()
+#     task_time = end_time - start_time
     
-    return result
-
-def cerenkov17_test(feature, label, hyperparameters, folds):
-
-    ''' test the distributed machine learning of cerenkov
-    '''
-    start_time = time.time()
-    K = len(set(folds["fold_id"])) # K-folds for each cv fold
-
-    for fold_id in range(1, K+1):
-        test_index = folds[folds["fold_id"] == fold_id].index
-        train_index = folds[folds["fold_id"] != fold_id].index
-
-        X_test = feature.loc[test_index, :]
-        y_test = label.loc[test_index].tolist() # //TODO we should guarantee that the y_test should have index as SNP IDs
-
-        X_train = feature.loc[train_index, :]
-        y_train = label.loc[train_index].tolist()
-
-        clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
-        clf_cerenkov17.fit(X_train, y_train)
-
-        y_test_pred = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
-
-    end_time = time.time()
-    task_time = end_time - start_time
-    
-    fpr, tpr, auroc = get_auroc(y_test, y_test_pred)
-    return fpr, tpr, auroc
+#     fpr, tpr, auroc = get_auroc(y_test, y_test_pred)
+#     return fpr, tpr, auroc
 
 
 def cerenkov_ml(method_list, feature_list, label_vec, hyperparameter_list, \
@@ -277,23 +326,23 @@ def cerenkov_ml(method_list, feature_list, label_vec, hyperparameter_list, \
         job_server = pp.Server(ncpus, ppservers=ppservers)
         print "Starting with ", job_server.get_ncpus(), "CPUs"
 
-
-    # init result
-    result = ml_result()
-
-
     # submit jobs to server
-    for method, feature in zip(method_list, feature_list):
-        for hyperparameters in hyperparameter_list:
-            for fold in fold_list:
-                args = (feature, hyperparameters, label, fold)
-                job_server.submit(method, args)
+    for method, feature, hyperparameters, fold in zip(method_list, feature_list, hyperparameter_list, fold_list):
+        args = (feature, label, hyperparameters, fold, "SNP")
+        # job_server.submit(method, args, modules=("time","pandas","numpy","xgboost"), callback=cr.append)
+        jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost", "sklearn")))
+        print "a job submitted"
     
-    # wait for jobs in all groups to finish
-    job_server.wait()
-    
+    # # wait for jobs in all groups to finish
+    # job_server.wait()
+
+    for f in jobs:
+        result.append(f())
+
     # display result
     job_server.print_stats()
+
+    return result
 
 def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, fold_list, ncpus=-1):
     # //TODO write all the checks
@@ -339,7 +388,7 @@ def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, 
 
     # submit jobs to server
     for method, feature, hyperparameters, fold in zip(method_list, feature_list, hyperparameter_list, fold_list):
-        args = (feature, label, hyperparameters, fold, "SNP")
+        args = (feature, label, hyperparameters, fold, "LOCUS")
         # job_server.submit(method, args, modules=("time","pandas","numpy","xgboost"), callback=cr.append)
         jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost", "sklearn")))
         print "a job submitted"
@@ -348,7 +397,7 @@ def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, 
     # job_server.wait()
 
     for f in jobs:
-        result.append(f())
+        result.extend(f())
 
     # display result
     job_server.print_stats()
