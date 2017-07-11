@@ -1,7 +1,6 @@
 from cerenkov_ml_base import *
 
 original_time = time.time()
-# np.random.seed(1337)
 n_rep = 2
 n_fold = 5
 
@@ -11,12 +10,6 @@ data_osu.index = coord.index # //TODO to ensure data_osu is already the "SNP ID 
 data_osu["coord"] = coord.coord
 data_osu.index.name = "rsid"
 data_osu.set_index("coord", append=True, inplace=True)
-feat_osu = data_osu.drop("label", axis=1)
-label = data_osu["label"]
-fold_list = locus_sampling(data_osu, n_rep, n_fold)
-# print fold_list
-# fold_list = snp_sampling(data_osu, n_rep, n_fold)
-# print fold_list
 
 hyperparameter = dict(
     learning_rate=0.1,
@@ -32,19 +25,16 @@ hyperparameter = dict(
     )
 
 method_list = [cerenkov17]*n_rep
-feature_list = [feat_osu]*n_rep
-label_vec = label
+dataset_list = [data_osu]*n_rep
 hyperparameter_list = [hyperparameter]*n_rep
-fold_assignments = fold_list
 
 start_time = time.time()
-result_list_parallel = cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, fold_assignments, ncpus=-1)
+result_list_parallel = cerenkov_ml(method_list, dataset_list, hyperparameter_list, n_rep, n_fold, "LOCUS", ncpus=-1)
 end_time = time.time()
 print "with parallelization: ", end_time - start_time, end_time - original_time
 print "**********************parallel result**********************\n"
 print "parallel result: "
 for result in result_list_parallel:
-    # print result["auroc"], result["aupvr"]
     print result["avgrank"]
 
 gc.collect()
@@ -58,10 +48,4 @@ test_time = end_time - start_time
 print "**********************without parallel result**********************\n"
 print "without parallelization: ", test_time
 for result in result_list_unparallel:
-    # print result["auroc"], result["aupvr"]
     print result["avgrank"]
-
-# result_parallel = np.concatenate(result_list_parallel)
-# result_unparallel = np.concatenate(result_list_unparallel)
-# np.savetxt("parallel.txt",result_parallel, delimiter="\t")
-# np.savetxt("unparallel.txt",result_unparallel, delimiter="\t")
