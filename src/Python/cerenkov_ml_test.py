@@ -35,9 +35,9 @@ hyperparameter_gwava_rf = dict(
 # dataset_list = [data_osu]*n_rep
 # hyperparameter_list = [hyperparameter_osu, hyperparameter_gwava_rf]
 
-method_list = [gwava_rf, cerenkov17]
-dataset_list = [data_osu]*n_rep
-hyperparameter_list = [hyperparameter_gwava_rf, hyperparameter_osu]
+method_list = [gwava_rf, cerenkov17, gwava_rf, cerenkov17]
+dataset_list = [data_osu, data_osu, data_osu, data_osu]
+hyperparameter_list = [hyperparameter_gwava_rf, hyperparameter_osu, hyperparameter_gwava_rf, hyperparameter_osu]
 
 
 
@@ -46,13 +46,7 @@ result_list_parallel = cerenkov_ml(method_list, dataset_list, hyperparameter_lis
 end_time = time.time()
 print "**********************parallel result**********************\n"
 print "with parallelization: ", end_time - start_time
-
-print "parallel result: "
-print "random forest:"
-for result in result_list_parallel[:n_fold]:
-    print result["avgrank"]
-print "xgboost:"
-for result in result_list_parallel[n_fold:]:
+for result in result_list_parallel:
     print result["avgrank"]
 
 
@@ -61,15 +55,11 @@ gc.collect()
 start_time = time.time()
 fold_list = locus_sampling(data_osu, n_rep, n_fold)
 result_list_unparallel = []
-for i in range(n_rep):
+for i in range(4):
     result_list_unparallel.extend(method_list[i](dataset_list[i], hyperparameter_list[i], fold_list[i], "LOCUS"))
 end_time = time.time()
 test_time = end_time - start_time
 print "**********************without parallel result**********************\n"
 print "without parallelization: ", test_time
-print "random forest:"
-for result in result_list_unparallel[:n_fold]:
-    print result["avgrank"]
-print "xgboost:"
-for result in result_list_unparallel[n_fold:]:
+for result in result_list_unparallel:
     print result["avgrank"]
