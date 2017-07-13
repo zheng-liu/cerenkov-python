@@ -1,8 +1,7 @@
 from cerenkov_ml_base import *
 
-original_time = time.time()
-n_rep = 2
-n_fold = 5
+n_rep = 4
+n_fold = 10
 
 data_osu = pandas.read_csv("features_OSU.tsv", sep="\t")
 coord = pandas.read_csv("coord.txt", sep="\t")
@@ -11,7 +10,7 @@ data_osu["coord"] = coord.coord
 data_osu.index.name = "rsid"
 data_osu.set_index("coord", append=True, inplace=True)
 
-hyperparameter = dict(
+hyperparameter_osu = dict(
     learning_rate=0.1,
     n_estimators=30,
     gamma=10,
@@ -24,28 +23,53 @@ hyperparameter = dict(
     nthread = 1
     )
 
-method_list = [cerenkov17]*n_rep
+
+hyperparameter_gwava_rf = dict(
+    n_estimators=300,
+    oob_score=True,
+    n_jobs=-1,
+    random_state=1337
+    )
+
+# method_list = [cerenkov17, gwava_rf]
+# dataset_list = [data_osu]*n_rep
+# hyperparameter_list = [hyperparameter_osu, hyperparameter_gwava_rf]
+
+method_list = [gwava_rf, cerenkov17]
 dataset_list = [data_osu]*n_rep
-hyperparameter_list = [hyperparameter]*n_rep
+hyperparameter_list = [hyperparameter_gwava_rf, hyperparameter_osu]
+
+
 
 start_time = time.time()
 result_list_parallel = cerenkov_ml(method_list, dataset_list, hyperparameter_list, n_rep, n_fold, "LOCUS", ncpus=-1)
 end_time = time.time()
-print "with parallelization: ", end_time - start_time, end_time - original_time
 print "**********************parallel result**********************\n"
+print "with parallelization: ", end_time - start_time
+
 print "parallel result: "
-for result in result_list_parallel:
+print "random forest:"
+for result in result_list_parallel[:n_fold]:
+    print result["avgrank"]
+print "xgboost:"
+for result in result_list_parallel[n_fold:]:
     print result["avgrank"]
 
-gc.collect()
 
-result_list_unparallel = []
+
+gc.collect()
 start_time = time.time()
+fold_list = locus_sampling(data_osu, n_rep, n_fold)
+result_list_unparallel = []
 for i in range(n_rep):
-    result_list_unparallel.extend(method_list[i](feature_list[i], label_vec, hyperparameter_list[i], fold_assignments[i], "LOCUS"))
+    result_list_unparallel.extend(method_list[i](dataset_list[i], hyperparameter_list[i], fold_list[i], "LOCUS"))
 end_time = time.time()
 test_time = end_time - start_time
 print "**********************without parallel result**********************\n"
 print "without parallelization: ", test_time
-for result in result_list_unparallel:
+print "random forest:"
+for result in result_list_unparallel[:n_fold]:
+    print result["avgrank"]
+print "xgboost:"
+for result in result_list_unparallel[n_fold:]:
     print result["avgrank"]

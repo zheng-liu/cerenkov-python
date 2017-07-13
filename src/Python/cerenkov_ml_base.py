@@ -20,24 +20,25 @@ import pandas
 import numpy as np
 import xgboost
 import sklearn
+import sklearn.ensemble
 import gc
 import warnings
 
 
-class cerenkov_result():
+# class cerenkov_result():
     
-    ''' Define the cerenkov operations
+#     ''' Define the cerenkov operations
 
-        * initial
-        * 
-        * 
-    '''
-    def __init__(self):
-        self.result = []
+#         * initial
+#         * 
+#         * 
+#     '''
+#     def __init__(self):
+#         self.result = []
 
-    def append(new_result):
-        # append ml feedback into result list
-        self.result.append(new_result)
+#     def append(new_result):
+#         # append ml feedback into result list
+#         self.result.append(new_result)
 
 
 
@@ -87,11 +88,8 @@ def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, s
     n_pos = np.sum(dataset["label"])
     max_fold_case_num = math.ceil((1 + slope_allowed) * n_case / n_fold)
     max_fold_pos_num = math.ceil((1 + slope_allowed) * max_fold_case_num * n_pos / n_case)
-    # fold_assignment = {str(i):[] for i in range(n_fold)} # initialize a fold assignment
     fold_case_num = [0 for i in range(n_fold)] # initialize a fold case number list
     fold_pos_num = [0 for i in range(n_fold)] # initialize a fold positive case number list
-    # fold = pd.DataFrame(data=[0 for i in range(n_case)], columns=["fold_id"])
-    # fold.index = dataset.index
     fold_list = []
 
     # assign groups to folds
@@ -200,8 +198,6 @@ def cerenkov17(dataset, hyperparameters, folds, case_fold_assign_method):
         y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
 
         if case_fold_assign_method == "LOCUS":
-            # avgrank = get_avgrank(y_test, y_test_pred, locus_table)
-            # //TODO add AVGRANK calculation here
             rank_test = pandas.DataFrame(data=y_test_probs, columns=["probs"])
             rank_test["group_id"] = folds[folds["fold_id"] == fold_id]["group_id"].values
             rank_test["label"] = y_test
@@ -220,6 +216,108 @@ def cerenkov17(dataset, hyperparameters, folds, case_fold_assign_method):
             result_list.append(result)
 
     return result_list
+
+
+
+
+
+def gwava_rf(dataset, hyperparameters, folds, case_fold_assign_method):
+    ''' gwava_rf takes in the (feature, label, hyperparameters, fold) 4-element tuple, and output the performance.
+        
+        * 
+    '''
+    feat = dataset.drop("label", axis=1)
+    label = dataset["label"]
+    K = len(set(folds["fold_id"])) # K-folds for each cv fold
+    result_list = []
+
+    for fold_id in range(1, K+1):
+        test_index = folds[folds["fold_id"] == fold_id].index
+        train_index = folds[folds["fold_id"] != fold_id].index
+
+        X_test = feat.loc[test_index, :]
+        y_test = label.loc[test_index].tolist() # //TODO we should guarantee that the y_test should have index as SNP IDs
+
+        X_train = feat.loc[train_index, :]
+        y_train = label.loc[train_index].tolist()
+        
+
+        clf_gwava_rf = sklearn.ensemble.RandomForestClassifier(**hyperparameters)
+        clf_gwava_rf.fit(X_train, y_train)
+
+        y_test_probs = clf_gwava_rf.predict_proba(X_test)[:, clf_gwava_rf.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+
+        if case_fold_assign_method == "LOCUS":
+            rank_test = pandas.DataFrame(data=y_test_probs, columns=["probs"])
+            rank_test["group_id"] = folds[folds["fold_id"] == fold_id]["group_id"].values
+            rank_test["label"] = y_test
+            rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+            avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
+            result = {"avgrank": avgrank}
+            result_list.append(result)
+        else:
+            fpr, tpr, _ = sklearn.metrics.roc_curve(y_test,y_test_probs)
+            auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+
+            precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+            aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+            
+            result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
+            result_list.append(result)
+
+    return result_list
+
+
+
+
+def gwava_xgb(dataset, hyperparameters, folds, case_fold_assign_method):
+    ''' gwava_xgb takes in the (feature, label, hyperparameters, fold) 4-element tuple, and output the performance.
+        
+        * 
+    '''
+
+    feat = dataset.drop("label", axis=1)
+    label = dataset["label"]
+    K = len(set(folds["fold_id"])) # K-folds for each cv fold
+    result_list = []
+
+    for fold_id in range(1, K+1):
+        test_index = folds[folds["fold_id"] == fold_id].index
+        train_index = folds[folds["fold_id"] != fold_id].index
+
+        X_test = feat.loc[test_index, :]
+        y_test = label.loc[test_index].tolist() # //TODO we should guarantee that the y_test should have index as SNP IDs
+
+        X_train = feat.loc[train_index, :]
+        y_train = label.loc[train_index].tolist()
+
+        clf_gwava_xgb = xgboost.XGBClassifier(**hyperparameters)
+        clf_gwava_xgb.fit(X_train, y_train)
+
+        y_test_probs = clf_gwava_xgb.predict_proba(X_test)[:, clf_gwava_xgb.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+
+        if case_fold_assign_method == "LOCUS":
+            rank_test = pandas.DataFrame(data=y_test_probs, columns=["probs"])
+            rank_test["group_id"] = folds[folds["fold_id"] == fold_id]["group_id"].values
+            rank_test["label"] = y_test
+            rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+            avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
+            result = {"avgrank": avgrank}
+            result_list.append(result)
+        else:
+            fpr, tpr, _ = sklearn.metrics.roc_curve(y_test,y_test_probs)
+            auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+
+            precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+            aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+            
+            result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
+            result_list.append(result)
+
+    return result_list
+
+
+
 
 
 def cerenkov_ml(method_list, dataset_list, hyperparameter_list, \
@@ -288,67 +386,7 @@ def cerenkov_ml(method_list, dataset_list, hyperparameter_list, \
     for method, dataset, hyperparameters, fold in zip(method_list, dataset_list, hyperparameter_list, fold_list):
         args = (dataset, hyperparameters, fold, "LOCUS")
         # job_server.submit(method, args, modules=("time","pandas","numpy","xgboost"), callback=cr.append)
-        jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost", "sklearn")))
-        print "a job submitted"
-
-    # # wait for jobs in all groups to finish
-    # job_server.wait()
-
-    for f in jobs:
-        result.extend(f())
-
-    # display result
-    job_server.print_stats()
-
-    return result
-
-def cerenkov_ml_test(method_list, feature_list, label_vec, hyperparameter_list, fold_list, ncpus=-1):
-    # //TODO write all the checks
-    ''' check input
-
-        * check if each method has a feature matrix
-        * check if ncpus > 0
-    '''
-    
-
-
-    ''' initializations:
-        
-        * build (method, feature_matrix, case_label) tuples
-        * take number_cv_replications, num_folds
-        * take case_fold_assign_method, select cv assignment approach
-    '''
-
-    label = label_vec
-
-    # //TODO write an if else to control the "feature_reduced" logic
-
-    ''' machine learning in parallelization
-
-        * start parallel python
-        * assign folds using the corresponding sampling
-        * plugin all hyperparameters
-        * train, test models
-        * performance results
-    '''
-    
-    jobs = []
-    result = []
-    # init parallel python server
-    ppservers = ()
-
-    if ncpus == -1:
-        job_server = pp.Server(ppservers=ppservers)
-        print "Starting with ", job_server.get_ncpus(), "CPUs"
-    else:
-        job_server = pp.Server(ncpus, ppservers=ppservers)
-        print "Starting with ", job_server.get_ncpus(), "CPUs"
-
-    # submit jobs to server
-    for method, feature, hyperparameters, fold in zip(method_list, feature_list, hyperparameter_list, fold_list):
-        args = (feature, label, hyperparameters, fold, "LOCUS")
-        # job_server.submit(method, args, modules=("time","pandas","numpy","xgboost"), callback=cr.append)
-        jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost", "sklearn")))
+        jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost", "sklearn.ensemble")))
         print "a job submitted"
 
     # # wait for jobs in all groups to finish
