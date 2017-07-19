@@ -75,13 +75,82 @@ def locus_group(dataset, cutoff_bp):
 
 
 
+# def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, seed=1337):
+
+#     '''
+#         * input: label (Pandas DataFrame with rsnp id as index)
+#         * output: assigned groups
+#     '''
+
+#     feat = locus_group(dataset, cutoff_bp)
+#     label = dataset["label"] # //TODO check if label necessary
+#     n_case = len(dataset)
+#     n_pos = np.sum(dataset["label"])
+#     max_fold_case_num = math.ceil((1 + slope_allowed) * n_case / n_fold)
+#     max_fold_pos_num = math.ceil((1 + slope_allowed) * max_fold_case_num * n_pos / n_case)
+#     fold_case_num = [0 for i in range(n_fold)] # initialize a fold case number list
+#     fold_pos_num = [0 for i in range(n_fold)] # initialize a fold positive case number list
+#     fold_list = []
+
+#     # assign groups to folds
+#     for group in feat.groupby("group_id"):
+#         # check if there is at least 1 rSNP in each group
+#         if group[1]["label"].nonzero() is None:
+#             print "[ERROR INFO] There is no positive cases in group ", group[0]
+#             sys.exit()
+
+#     # assign each group
+#     group_case = [group for group in feat.groupby("group_id")]
+#     group_case.sort(key=lambda x: len(x[1]), reverse=True) # sort the group case according to number of elements each group
+
+#     for i_rep in range(n_rep):
+        
+#         rs = RandomState(seed+i_rep)
+#         fold = pandas.DataFrame(data=[[0,"0-0"] for i in range(n_case)], columns=["fold_id", "group_id"])
+#         fold.index = dataset.index
+
+#         for group in group_case:
+
+#             group_count = len(group[1])
+#             group_pos_count = np.sum(group[1]["label"])
+
+#             ind_allowed = [i for i in range(n_fold) if fold_case_num[i] + group_count <= max_fold_case_num and fold_pos_num[i] + group_pos_count <= max_fold_pos_num ]
+            
+#             # sample from allowed indexes
+#             if len(ind_allowed) > 1:
+#                 probs = np.array([(1.0 - (fold_case_num[i]*1.0 / max_fold_case_num) * (1.0 - (fold_pos_num[i]*1.0 / max_fold_pos_num))) for i in ind_allowed])
+#                 norm_probs = probs / probs.sum() # np.random.choice need probabilities summed up to 1.0
+#                 ind_selected = rs.choice(ind_allowed, size=1, p=norm_probs)[0]
+#             else:
+#                 ind_selected = ind_allowed[0]
+
+#             fold.ix[group[1].index, "fold_id"] = ind_selected + 1
+#             fold_case_num[ind_selected] += group_count
+#             fold_pos_num[ind_selected] += group_pos_count
+        
+#         fold["group_id"] = feat["group_id"]
+
+#         # check if all SNP are assigned
+#         if 0 in fold["fold_id"]:
+#             print "[ERROR INFO] Some SNP is not assigned to any fold!"
+#             sys.exit()
+
+#         fold_list.append(fold)
+        
+#         fold_case_num = [0] * n_fold
+#         fold_pos_num = [0] * n_fold
+
+#     del dataset["group_id"]
+#     return fold_list
+
+
 def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, seed=1337):
 
     '''
         * input: label (Pandas DataFrame with rsnp id as index)
         * output: assigned groups
     '''
-
+    start_time = time.time()
     feat = locus_group(dataset, cutoff_bp)
     label = dataset["label"] # //TODO check if label necessary
     n_case = len(dataset)
@@ -90,7 +159,7 @@ def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, s
     max_fold_pos_num = math.ceil((1 + slope_allowed) * max_fold_case_num * n_pos / n_case)
     fold_case_num = [0 for i in range(n_fold)] # initialize a fold case number list
     fold_pos_num = [0 for i in range(n_fold)] # initialize a fold positive case number list
-    fold_list = []
+    fold = pandas.DataFrame(data=0, index=dataset.index, columns=np.arange(n_rep))
 
     # assign groups to folds
     for group in feat.groupby("group_id"):
@@ -102,12 +171,10 @@ def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, s
     # assign each group
     group_case = [group for group in feat.groupby("group_id")]
     group_case.sort(key=lambda x: len(x[1]), reverse=True) # sort the group case according to number of elements each group
-
+    
     for i_rep in range(n_rep):
-        
+
         rs = RandomState(seed+i_rep)
-        fold = pandas.DataFrame(data=[[0,"0-0"] for i in range(n_case)], columns=["fold_id", "group_id"])
-        fold.index = dataset.index
 
         for group in group_case:
 
@@ -124,24 +191,19 @@ def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, s
             else:
                 ind_selected = ind_allowed[0]
 
-            fold.ix[group[1].index, "fold_id"] = ind_selected + 1
+            fold.loc[group[1].index.values, i_rep] = ind_selected + 1
             fold_case_num[ind_selected] += group_count
             fold_pos_num[ind_selected] += group_pos_count
-        
-        fold["group_id"] = feat["group_id"]
 
         # check if all SNP are assigned
-        if 0 in fold["fold_id"]:
+        if 0 in fold.ix[:, i_rep]:
             print "[ERROR INFO] Some SNP is not assigned to any fold!"
             sys.exit()
 
-        fold_list.append(fold)
-        
         fold_case_num = [0] * n_fold
         fold_pos_num = [0] * n_fold
 
-    del dataset["group_id"]
-    return fold_list
+    return fold
 
 
 
@@ -228,42 +290,44 @@ def gwava_rf(dataset, hyperparameters, folds, case_fold_assign_method):
     '''
     feat = dataset.drop("label", axis=1)
     label = dataset["label"]
-    K = len(set(folds["fold_id"])) # K-folds for each cv fold
+    K = len(set(folds.ix[:,0])) # K-folds for each cv fold
+    n_rep = folds.shape[1]
     result_list = []
-
-    for fold_id in range(1, K+1):
-        test_index = folds[folds["fold_id"] == fold_id].index
-        train_index = folds[folds["fold_id"] != fold_id].index
-
-        X_test = feat.loc[test_index, :]
-        y_test = label.loc[test_index].tolist() # //TODO we should guarantee that the y_test should have index as SNP IDs
-
-        X_train = feat.loc[train_index, :]
-        y_train = label.loc[train_index].tolist()
-        
-
-        clf_gwava_rf = sklearn.ensemble.RandomForestClassifier(**hyperparameters)
-        clf_gwava_rf.fit(X_train, y_train)
-
-        y_test_probs = clf_gwava_rf.predict_proba(X_test)[:, clf_gwava_rf.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
-
-        if case_fold_assign_method == "LOCUS":
-            rank_test = pandas.DataFrame(data=y_test_probs, columns=["probs"])
-            rank_test["group_id"] = folds[folds["fold_id"] == fold_id]["group_id"].values
-            rank_test["label"] = y_test
-            rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
-            avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
-            result = {"avgrank": avgrank}
-            result_list.append(result)
-        else:
-            fpr, tpr, _ = sklearn.metrics.roc_curve(y_test,y_test_probs)
-            auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
-
-            precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
-            aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+    
+    for i_rep in range(n_rep):
+        for fold_id in range(1, K+1):
+            test_index = folds[folds.ix[:,i_rep] == fold_id].index
+            train_index = folds[folds.ix[:,i_rep] != fold_id].index
+    
+            X_test = feat.loc[test_index, :]
+            y_test = label.loc[test_index].tolist() # //TODO we should guarantee that the y_test should have index as SNP IDs
+    
+            X_train = feat.loc[train_index, :]
+            y_train = label.loc[train_index].tolist()
             
-            result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
-            result_list.append(result)
+    
+            clf_gwava_rf = sklearn.ensemble.RandomForestClassifier(**hyperparameters)
+            clf_gwava_rf.fit(X_train, y_train)
+    
+            y_test_probs = clf_gwava_rf.predict_proba(X_test)[:, clf_gwava_rf.classes_==1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+    
+            if case_fold_assign_method == "LOCUS":
+                rank_test = pandas.DataFrame(data=y_test_probs, columns=["probs"])
+                rank_test["group_id"] = folds[folds["fold_id"] == fold_id]["group_id"].values
+                rank_test["label"] = y_test
+                rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+                avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
+                result = {"avgrank": avgrank}
+                result_list.append(result)
+            else:
+                fpr, tpr, _ = sklearn.metrics.roc_curve(y_test,y_test_probs)
+                auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+    
+                precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+                aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+                
+                result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
+                result_list.append(result)
 
     return result_list
 
