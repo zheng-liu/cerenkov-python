@@ -25,22 +25,6 @@ import gc
 import warnings
 
 
-# class cerenkov_result():
-    
-#     ''' Define the cerenkov operations
-
-#         * initial
-#         * 
-#         * 
-#     '''
-#     def __init__(self):
-#         self.result = []
-
-#     def append(new_result):
-#         # append ml feedback into result list
-#         self.result.append(new_result)
-
-
 
 
 
@@ -75,73 +59,6 @@ def locus_group(dataset, cutoff_bp):
 
 
 
-# def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, seed=1337):
-
-#     '''
-#         * input: label (Pandas DataFrame with rsnp id as index)
-#         * output: assigned groups
-#     '''
-
-#     feat = locus_group(dataset, cutoff_bp)
-#     label = dataset["label"] # //TODO check if label necessary
-#     n_case = len(dataset)
-#     n_pos = np.sum(dataset["label"])
-#     max_fold_case_num = math.ceil((1 + slope_allowed) * n_case / n_fold)
-#     max_fold_pos_num = math.ceil((1 + slope_allowed) * max_fold_case_num * n_pos / n_case)
-#     fold_case_num = [0 for i in range(n_fold)] # initialize a fold case number list
-#     fold_pos_num = [0 for i in range(n_fold)] # initialize a fold positive case number list
-#     fold_list = []
-
-#     # assign groups to folds
-#     for group in feat.groupby("group_id"):
-#         # check if there is at least 1 rSNP in each group
-#         if group[1]["label"].nonzero() is None:
-#             print "[ERROR INFO] There is no positive cases in group ", group[0]
-#             sys.exit()
-
-#     # assign each group
-#     group_case = [group for group in feat.groupby("group_id")]
-#     group_case.sort(key=lambda x: len(x[1]), reverse=True) # sort the group case according to number of elements each group
-
-#     for i_rep in range(n_rep):
-        
-#         rs = RandomState(seed+i_rep)
-#         fold = pandas.DataFrame(data=[[0,"0-0"] for i in range(n_case)], columns=["fold_id", "group_id"])
-#         fold.index = dataset.index
-
-#         for group in group_case:
-
-#             group_count = len(group[1])
-#             group_pos_count = np.sum(group[1]["label"])
-
-#             ind_allowed = [i for i in range(n_fold) if fold_case_num[i] + group_count <= max_fold_case_num and fold_pos_num[i] + group_pos_count <= max_fold_pos_num ]
-            
-#             # sample from allowed indexes
-#             if len(ind_allowed) > 1:
-#                 probs = np.array([(1.0 - (fold_case_num[i]*1.0 / max_fold_case_num) * (1.0 - (fold_pos_num[i]*1.0 / max_fold_pos_num))) for i in ind_allowed])
-#                 norm_probs = probs / probs.sum() # np.random.choice need probabilities summed up to 1.0
-#                 ind_selected = rs.choice(ind_allowed, size=1, p=norm_probs)[0]
-#             else:
-#                 ind_selected = ind_allowed[0]
-
-#             fold.ix[group[1].index, "fold_id"] = ind_selected + 1
-#             fold_case_num[ind_selected] += group_count
-#             fold_pos_num[ind_selected] += group_pos_count
-        
-#         fold["group_id"] = feat["group_id"]
-
-#         # check if all SNP are assigned
-#         if 0 in fold["fold_id"]:
-#             print "[ERROR INFO] Some SNP is not assigned to any fold!"
-#             sys.exit()
-
-#         fold_list.append(fold)
-        
-#         fold_case_num = [0] * n_fold
-#         fold_pos_num = [0] * n_fold
-
-#     del dataset["group_id"]
-#     return fold_list
 
 
 def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, seed=1337):
@@ -244,7 +161,7 @@ def cerenkov17(dataset, hyperparameters, folds, case_fold_assign_method):
     K = len(set(folds.ix[:,0])) # K-folds for each cv fold
     n_rep = folds.shape[1]
     result_list = []
-    
+
     for i_rep in range(n_rep):
         for fold_id in range(1, K+1):
             test_index = folds[folds.ix[:,i_rep] == fold_id].index
@@ -279,7 +196,9 @@ def cerenkov17(dataset, hyperparameters, folds, case_fold_assign_method):
                 result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
                 result_list.append(result)
 
-    return result_list
+    clf_result = {"method":"cerenkov17", "result_list": result_list, "hyperparameters":hyperparameters}
+
+    return clf_result
 
 
 
@@ -331,7 +250,9 @@ def gwava_rf(dataset, hyperparameters, folds, case_fold_assign_method):
                 result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
                 result_list.append(result)
 
-    return result_list
+    clf_result = {"method":"gwava_rf", "result_list": result_list, "hyperparameters":hyperparameters}
+
+    return clf_result
 
 
 
@@ -382,8 +303,10 @@ def gwava_xgb(dataset, hyperparameters, folds, case_fold_assign_method):
                 
                 result = {"fpr":fpr, "tpr":tpr, "auroc":auroc, "precision":precision, "recall":recall, "aupvr":aupvr}
                 result_list.append(result)
+    
+    clf_result = {"method":"gwava_xgb", "result_list": result_list, "hyperparameters":hyperparameters}
 
-    return result_list
+    return clf_result
 
 
 
@@ -392,9 +315,11 @@ def gwava_xgb(dataset, hyperparameters, folds, case_fold_assign_method):
 def cerenkov_ml(method_list, dataset_list, hyperparameter_list, \
                 number_cv_replications, number_folds, case_assignment_method="SNP", \
                 feature_reduced=False, ncpus=-1):
-    # //TODO write all the checks
-    # //TODO add feature dimension reduction procedure
+    
+    if feature_reduced:
+        pass
 
+    # //TODO write all the checks
     ''' check input
 
         * check if each method has a feature matrix
@@ -408,7 +333,6 @@ def cerenkov_ml(method_list, dataset_list, hyperparameter_list, \
         * take case_assignment_method, select cv assignment approach
     '''
     
-    # label = label_vec
     feature_list = [dataset_list[i].drop("label", axis=1) for i in range(len(dataset_list))]
     label = dataset_list[0]["label"]
     num_rep = number_cv_replications
@@ -424,10 +348,7 @@ def cerenkov_ml(method_list, dataset_list, hyperparameter_list, \
     else:
         print "[ERROR INFO] Currently only \"LOCUS\" and \"SNP\" assignments allowed!"
     
-    # //TODO think about whether the feature_list[0] must be our method in which the location information are used
     fold = sampling(dataset_list[0], num_rep, num_folds)
-    
-    # //TODO write an if else to control the "feature_reduced" logic
 
     ''' machine learning in parallelization
 
@@ -438,9 +359,9 @@ def cerenkov_ml(method_list, dataset_list, hyperparameter_list, \
         * performance results
     '''
 
-
     jobs = []
     result = []
+
     # init parallel python server
     ppservers = ()
 
@@ -450,19 +371,19 @@ def cerenkov_ml(method_list, dataset_list, hyperparameter_list, \
     else:
         job_server = pp.Server(ncpus, ppservers=ppservers)
         print "Starting with ", job_server.get_ncpus(), "CPUs"
-
+    print hyperparameter_list
     # submit jobs to server
     for method, dataset, hyperparameters in zip(method_list, dataset_list, hyperparameter_list):
-        args = (dataset, hyperparameters, fold, "LOCUS")
-        # job_server.submit(method, args, modules=("time","pandas","numpy","xgboost"), callback=cr.append)
-        jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost", "sklearn.ensemble")))
-        print "a job submitted"
+        for hp in hyperparameters:
+            args = (dataset, hp, fold, "LOCUS")
+            jobs.append(job_server.submit(method, args, modules=("time","pandas","numpy","xgboost", "sklearn.ensemble")))
+            print "a job submitted"
 
     # # wait for jobs in all groups to finish
     # job_server.wait()
 
     for f in jobs:
-        result.extend(f())
+        result.append(f())
 
     # display result
     job_server.print_stats()
