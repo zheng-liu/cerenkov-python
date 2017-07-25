@@ -8,5 +8,6 @@ misc.*
 misc/*
 data/*
 workspace/*
+cerenkov-python-env/*
 .Rhistory
 .DS_Store
