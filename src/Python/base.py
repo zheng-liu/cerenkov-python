@@ -9,12 +9,15 @@ import sklearn.ensemble
 import gc
 import warnings
 import cPickle as pickle
+import itertools
 
 
 # parallel cerenkov framework
 
 def method_generate():
-    pass
+    
+    method_table = [cerenkov17]
+    return method_table
 
 def locus_group(dataset, cutoff_bp):
     ''' distribute each SNP into a group and give each SNP a group ID
@@ -165,24 +168,138 @@ def fold_generate(dataset, n_rep, n_fold, fold_assign_method, **kwargs):
 
 def hp_generate():
     # generate the hyperparameters for each classifier
-    pass
-    # return hp_table
+    learning_rate = [0.05, 0.1, 0.15]
+    n_estimators = [25, 30, 35]
+    gamma = [5, 10, 15]
+    subsample = [1]
+    colsample_bytree = [0.5, 0.55, 0.60, 0.65]
+    base_score = [0.1082121]
+    scale_pos_weight = [1]
+    max_depth = [5,6,7]
+    seed=[1337]
+    nthread = [1]
+
+    hp_comb = itertools.product(
+    	              learning_rate, 
+                      n_estimators,
+                      gamma,
+                      subsample,
+                      colsample_bytree,
+                      base_score,
+                      scale_pos_weight,
+                      max_depth,
+                      seed,
+                      nthread)
+    #n_hp = len(list(hp_comb))
+    hp_key = (
+        "learning_rate",
+        "n_estimators",
+        "gamma",
+        "subsample",
+        "colsample_bytree",
+        "base_score",
+        "scale_pos_weight",
+        "max_depth",
+        "seed",
+        "nthread"
+    	)
+    hp_col = [dict(zip(hp_key, hp)) for hp in hp_comb]
+    n_hp = len(hp_col)
+    cerenkov17_hp = pandas.DataFrame(columns=["hp_no", "hp"], index=np.arange(1, n_hp + 1))
+    cerenkov17_hp["hp_no"] = np.arange(1, n_hp + 1)
+    cerenkov17_hp["hp"] = hp_col
+
+    hp_table = {
+        "cerenkov17": cerenkov17_hp
+    }
+    
+    return hp_table
+    
+
+
+
+
+def data_generate(method, data):
+    data_table = dict(zip(method, data))
+    return data_table
 
 
 
 
 
-def task_pool():
-    pass
+def task_pool(method_table, hp_table, data_table, fold_table):
+    n_hp = sum([len(hp_table[method.__name__]) for method in method_table])
+    n_fold = len(fold_table)
+    n_task = n_hp * n_fold
+    print "n_fold:", n_fold
+    print "n_hp:", n_hp
+    print "n_task:", n_task
+    task_ind = 1
+    task_table = pandas.DataFrame(columns=["method", "hp", "data", "fold"], index=np.arange(1, n_task + 1))
+    for method in method_table:
+        method_str = method.__name__
+        for hp_ind, hp in hp_table[method_str].iterrows():
+            for fold_ind, fold in fold_table.iterrows():
+                task_table.ix[task_ind, "method"] = method
+                task_table.ix[task_ind, "hp"] = hp_ind
+                task_table.ix[task_ind, "data"] = method_str
+                task_table.ix[task_ind, "fold"] = fold_ind
+                task_ind += 1
+                print task_ind
+
+    pickle.dump(task_table, open("task_table.p", "wb"))
+    return task_table
 
 
 
 
+def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold_assign_method, ncpus, feature_reduced):
+    
+    if fold_assign_method == "SNP":
+        task_table["auroc"] = -1.0
+        task_table["aupvr"] = -1.0
+    else:
+        task_table["avgrank"] = -1.0
 
-def cerenkov_ml():
-    pass
+    jobs =[]
+    result = []
+    ppservers = ()
 
+    if ncpus == -1:
+        job_server = pp.Server(ppservers=ppservers)
+        print "Starting with ", job_server.get_ncpus(), "CPUs"
+    else:
+        job_server = pp.Server(ncpus, ppservers=ppservers)
+        print "Starting with ", job_server.get_ncpus(), "CPUs"
 
+    for task_no, task in task_table.iterrows():
+        method = task["method"]
+        method_name = method.__name__
+        hp_ind = task["hp"]
+        hp = hp_table[method_name].ix[hp_ind, "hp"]
+        data_ind = task["data"]
+        data = data_table[data_ind]
+        fold_ind = task["fold"]
+        fold = fold_table.loc[[fold_ind]]
+        args = (data, hp, fold, fold_assign_method, task_no)
+        jobs.append(job_server.submit(method, args, modules=("time", "pandas", "numpy", "xgboost", "sklearn.ensemble")))
+        print "a job submitted!", "task_no", task_no
+    
+    for f in jobs:
+
+        result = f()
+
+        if fold_assign_method == "SNP":
+            result_task_no = result["task_no"]
+            task_table.ix[result_task_no, "auroc"] = result["auroc"]
+            task_table.ix[result_task_no, "aupvr"] = result["aupvr"]
+        else:
+            result_task_no = result["task_no"]
+            task_table.ix[result_task_no, "avgrank"] = result["avgrank"]
+
+    job_server.print_stats()
+    
+    return task_table
 
 
 
@@ -195,8 +312,41 @@ def cerenkov_analysis():
 
 # machine learning methods
 
-def cerenkov17(dataset, hyperparameters, fold, fold_assign_method):
-    pass
+def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
+    
+    feat = dataset.drop(["label", "group_id"], axis=1)
+    label = dataset["label"]
+
+    train_index = fold["train_index"]
+    test_index = fold["test_index"]
+    
+    X_train = feat.loc[train_index, :]
+    y_train = feat.loc[train_index, :]
+    X_test = feat.loc[test_index, :]
+    y_test = feat.loc[test_index, :]
+
+    clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
+    clf_cerenkov17.fit(X_train, y_train)
+
+    y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+    if fold_assign_method == "LOCUS":
+        rank_test = pandas.DataFrame(data=y_test_probs, columns=["probs"])
+        rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
+        rank_test["label"] = y_test
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+        avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
+        result = {"avgrank": avgrank, "task_no": task_no}
+    else:
+        fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
+        auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+
+        precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+        aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+        
+        result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
+
+    return result
+
 
 
 
@@ -211,3 +361,10 @@ def gwava_rf(dataset, hyperparameters, fold, fold_assign_method):
 
 def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method):
     pass
+
+
+
+
+
+def cerenkov():
+    return "cerenkov"
