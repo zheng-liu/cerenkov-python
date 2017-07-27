@@ -4,7 +4,6 @@
 *.synctex.gz
 *.key
 *.doc
-misc.*
 misc/*
 data/*
 workspace/*
