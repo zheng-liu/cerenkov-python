@@ -3,10 +3,11 @@ from base_mp import *
 
 data_osu = pandas.read_csv("features_OSU.tsv", sep="\t")
 coord = pandas.read_csv("coord.txt", sep="\t")
-data_osu.index = coord.index # //TODO to ensure data_osu is already the "SNP ID secure" version
-data_osu["coord"] = coord.coord
+# TODO to ensure data_osu is already the "SNP ID secure" version
+data_osu.index = coord.index  # Set 1st index
 data_osu.index.name = "rsid"
-data_osu.set_index("coord", append=True, inplace=True)
+data_osu["coord"] = coord.coord
+data_osu.set_index("coord", append=True, inplace=True)  # Set 2nd index
 
 
 fold_kwargs={}
