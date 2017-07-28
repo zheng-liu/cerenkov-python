@@ -9,7 +9,6 @@ data_osu.index.name = "rsid"
 data_osu.set_index("coord", append=True, inplace=True)
 
 
-start_time = time.time()
 fold_kwargs={}
 fold_kwargs["cutoff_bp"] = 50000
 fold_kwargs["slope_allowed"] = 0.5
@@ -19,5 +18,9 @@ hp_table = hp_generate()
 data_table = data_generate(["cerenkov17"], [data_osu])
 fold_table = fold_generate(data_osu, n_rep=2, n_fold=5, fold_assign_method="SNP", **fold_kwargs)
 task_table = task_pool(method_table, hp_table, data_table, fold_table)
+
+s_time = time.time()
 result_task_table = cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold_assign_method="SNP", ncpus=-1, feature_reduced=False)
+e_time = time.time()
 print result_task_table
+print "cerenkov_ml TIME= ", e_time - s_time

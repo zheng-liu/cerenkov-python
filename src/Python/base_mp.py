@@ -15,6 +15,8 @@ import multiprocessing
 def method_generate():
     
     method_table = [cerenkov17]
+    pickle.dump(method_table, open("method_table.p", "wb"))
+    print "[INFO] dump to method_table.p!"
     return method_table
 
 def locus_group(dataset, cutoff_bp):
@@ -211,6 +213,8 @@ def hp_generate():
         "cerenkov17": cerenkov17_hp
     }
     
+    pickle.dump(hp_table, open("hp_table.p", "wb"))
+    print "[INFO] dump to hp_table.p!"
     return hp_table
     
 
@@ -219,6 +223,8 @@ def hp_generate():
 
 def data_generate(method, data):
     data_table = dict(zip(method, data))
+    pickle.dump(data_table, open("data_table.p", "wb"))
+    print "[INFO] dump to data_table.p!"
     return data_table
 
 
@@ -249,6 +255,7 @@ def task_pool(method_table, hp_table, data_table, fold_table):
 
 
 
+
 def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold_assign_method, ncpus, feature_reduced):
     
     if fold_assign_method == "SNP":
@@ -266,7 +273,7 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
     result_pool = []
 
     for task_no, task in task_table.iterrows():
-        s_time = time.time()
+        
         method = task["method"]
         method_name = method.__name__
         hp_ind = task["hp"]
@@ -278,7 +285,7 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
         args = (data, hp, fold, fold_assign_method, task_no) # time: 5.0e-6
         result_pool.append(p.apply_async(method, args=args))
         print "[INFO] a job submitted!", "task_no", task_no
-
+    
     p.close()
     p.join()
 
@@ -294,21 +301,22 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
             result = result.get()
             result_task_no = result["task_no"]
             task_table.ix[result_task_no, "avgrank"] = result["avgrank"]
-    e_time = time.time()
-    print "MP Time=", e_time - s_time
     
     pickle.dump(task_table, open("task_table.p", "wb"))
     print "[INFO] dump to task_table.p!"
     return task_table
 
 
+def cerenkov_analysis(fold_assign_method):
+    # //TODO check if all the files are there
+    method_table = pickle.load(open("method_table.p", "rb"))
+    data_table = pickle.load(open("data_table.p", "rb"))
+    fold_table = pickle.load(open("fold_table.p", "rb"))
+    hp_table = pickle.load(open("hp_table.p", "rb"))
+    task_table = pickle.load(open("task_table.p", "rb"))
 
-def cerenkov_analysis():
-    pass
-
-
-
-
+    if fold_assign_method == "SNP":
+        pass
 
 # machine learning methods
 
@@ -348,7 +356,7 @@ def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
         aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
         
         result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
-    print "[INFO] cerenkov17 done!"
+    print "[INFO] cerenkov17 done! task no: ", task_no
     return result
 
 
@@ -365,3 +373,7 @@ def gwava_rf(dataset, hyperparameters, fold, fold_assign_method):
 
 def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method):
     pass
+
+
+
+
