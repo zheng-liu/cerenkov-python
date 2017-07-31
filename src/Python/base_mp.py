@@ -308,9 +308,16 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
             result_task_no = result["task_no"]
             task_table.ix[result_task_no, "avgrank"] = result["avgrank"]
     
+    # convert function to string of function name
+    for task_no, task in task_table.iterrows():
+        task_table.ix[task_no, "method"] = task["method"].__name__
+
     pickle.dump(task_table, open("task_table.p", "wb"))
     print "[INFO] dump to task_table.p!"
     return task_table
+
+
+
 
 
 def cerenkov_analysis(fold_assign_method):
@@ -323,6 +330,10 @@ def cerenkov_analysis(fold_assign_method):
 
     if fold_assign_method == "SNP":
         pass
+
+
+
+
 
 # machine learning methods
 
