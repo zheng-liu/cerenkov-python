@@ -3,11 +3,14 @@
 from __future__ import division
 import math, time, thread, sys
 from numpy.random import RandomState
-import pandas
+import pandas as pd
 import numpy as np
 import xgboost
 import sklearn
 import sklearn.ensemble
+import matplotlib as mlp
+import matplotlib.pyplot as plt
+import seaborn as sns
 import gc
 import warnings
 import cPickle as pickle
@@ -18,10 +21,13 @@ import multiprocessing
 # parallel cerenkov framework
 def method_generate():
     
-    method_table = [cerenkov17]
-    pickle.dump(method_table, open("method_table.p", "wb"))
-    print "[INFO] dump to method_table.p!"
+    method_table = [cerenkov17, cerenkov_t]
+    # pickle.dump(method_table, open("method_table.p", "wb"))
+    # print "[INFO] dump to method_table.p!"
     return method_table
+
+
+
 
 
 def locus_group(dataset, cutoff_bp):
@@ -37,9 +43,9 @@ def locus_group(dataset, cutoff_bp):
         chrom_name = "chromchr" + chrom
         SNP_chrom = feat.loc[feat[chrom_name] == 1]
         SNP_chrom = SNP_chrom.sort_values(["coord"], ascending=True)
+
         # calculate the difference of adjacent ChromCoord
         SNP_chrom["group_id"] = SNP_chrom["coord"] - SNP_chrom["coord"].shift()
-        
         SNP_chrom.ix[0, "group_id"] = 1.0  # fill in the missing first difference of ChromCoord
         SNP_chrom["group_id"] = SNP_chrom["group_id"] > cutoff_bp  # True if distance > cutoff_bp; else False
         SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(int)  # transform to integer
@@ -50,6 +56,9 @@ def locus_group(dataset, cutoff_bp):
         feat.loc[SNP_chrom.index, "group_id"] = SNP_chrom["group_id"]  # assign values back to feature matrix
 
     return feat
+
+
+
 
 
 def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, seed=1337):
@@ -64,7 +73,7 @@ def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, s
     max_fold_pos_num = math.ceil((1 + slope_allowed) * max_fold_case_num * n_pos / n_case)
 
     # `fold` here uses 1-D index from `feat`, not 2-D index from `dataset`
-    fold = pandas.DataFrame(data=0, index=feat.index, columns=np.arange(n_rep))
+    fold = pd.DataFrame(data=0, index=feat.index, columns=np.arange(1, n_rep+1))
 
     groups = feat.groupby("group_id")
 
@@ -78,7 +87,7 @@ def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, s
     # sort the group case according to number of elements each group (in place)
     group_case.sort(key=lambda x: x[1].shape[0], reverse=True)
 
-    for i_rep in range(n_rep):
+    for i_rep in range(1, n_rep+1):
 
         fold_case_num = [0] * n_fold  # initialize a fold case number list
         fold_pos_num = [0] * n_fold  # initialize a fold positive case number list
@@ -129,7 +138,7 @@ def snp_sampling(dataset, n_rep, n_fold, seed=1337):
     # //TODO think about whether we need to balance positive-negative case numbers in each fold, or totally random?
     np.random.seed(seed)
     n_label = len(dataset)
-    fold = pandas.DataFrame(data=0, index=dataset.index, columns=np.arange(1, n_rep+1))
+    fold = pd.DataFrame(data=0, index=dataset.index, columns=np.arange(1, n_rep+1))
 
     for i_rep in range(1, n_rep+1):
 
@@ -148,19 +157,24 @@ def fold_generate(dataset, n_rep, n_fold, fold_assign_method, **kwargs):
     # assign each SNP to a fold in each replication
     if fold_assign_method == "SNP":
         fold = snp_sampling(dataset, n_rep, n_fold, kwargs["seed"])
-    else:
+    elif fold_assign_method == "LOCUS":
         fold = locus_sampling(dataset, n_rep, n_fold, kwargs["cutoff_bp"], kwargs["slope_allowed"], kwargs["seed"])
+    else:
+        print "Invalid fold assign method!"
+        exit(0)
   
     # assign SNPs to each train-test process
-    fold_table = pandas.DataFrame(columns=["fold_no", "train_index", "test_index"], index=np.arange(1, n_rep * n_fold + 1))
+    fold_table = pd.DataFrame(columns=["fold_index", "i_fold", "i_rep", "train_index", "test_index"], index=np.arange(1, n_rep * n_fold + 1))
 
-    for i_rep in range(1, n_rep+1):
-        for i_fold in range(1, n_fold+1):
-            test_index = fold.loc[fold[i_rep]==i_fold].index.values
-            train_index = fold.loc[fold[i_rep]!=i_fold].index.values
-            fold_table.ix[(i_rep-1)*n_fold+i_fold, "fold_no"] = (i_rep, i_fold)
-            fold_table.ix[(i_rep-1)*n_fold+i_fold, "train_index"] = train_index
-            fold_table.ix[(i_rep-1)*n_fold+i_fold, "test_index"] = test_index
+    for i_rep in range(1, n_rep + 1):
+        for i_fold in range(1, n_fold + 1):
+            test_index = fold.loc[fold[i_rep] == i_fold].index.values
+            train_index = fold.loc[fold[i_rep] != i_fold].index.values
+            fold_table.ix[(i_rep - 1) * n_fold + i_fold, "i_fold"] = i_fold
+            fold_table.ix[(i_rep - 1) * n_fold + i_fold, "i_rep"] = i_rep
+            fold_table.ix[(i_rep - 1) * n_fold + i_fold, "fold_index"] = (i_rep - 1) * n_fold + i_fold
+            fold_table.ix[(i_rep - 1) * n_fold + i_fold, "train_index"] = train_index
+            fold_table.ix[(i_rep - 1) * n_fold + i_fold, "test_index"] = test_index
     
     # //TODO pay attention that: a dataframe generated by pandas==20.3 cannot be pickle loaded by pandas==18.0!!!
     pickle.dump(fold_table, open("fold_table.p", "wb"))
@@ -211,12 +225,13 @@ def hp_generate():
     	)
     hp_col = [dict(zip(hp_key, hp)) for hp in hp_comb]
     n_hp = len(hp_col)
-    cerenkov17_hp = pandas.DataFrame(columns=["hp_no", "hp"], index=np.arange(1, n_hp + 1))
+    cerenkov17_hp = pd.DataFrame(columns=["hp_no", "hp"], index=np.arange(1, n_hp + 1))
     cerenkov17_hp["hp_no"] = np.arange(1, n_hp + 1)
     cerenkov17_hp["hp"] = hp_col
 
     hp_table = {
-        "cerenkov17": cerenkov17_hp
+        "cerenkov17": cerenkov17_hp,
+        "cerenkov_t": cerenkov17_hp
     }
     
     pickle.dump(hp_table, open("hp_table.p", "wb"))
@@ -227,8 +242,26 @@ def hp_generate():
 
 
 
-def data_generate(method, data):
-    data_table = dict(zip(method, data))
+def pre_data_generate(data):
+    
+    data["coord"] = data.index.get_level_values("coord").values.tolist()
+    return data
+
+
+
+
+
+def data_generate(method, data, fold_assign_method, **kwargs):
+    if fold_assign_method == "SNP":
+        data_table = dict(zip(method, data))
+    elif fold_assign_method == "LOCUS":
+        cutoff_bp = kwargs["cutoff_bp"]
+        data = [locus_group(pre_data_generate(d), cutoff_bp) for d in data]
+        data_table = dict(zip(method, data))
+    else:
+        print "Invalid fold assign method!"
+        exit(0)
+
     pickle.dump(data_table, open("data_table.p", "wb"))
     print "[INFO] dump to data_table.p!"
     return data_table
@@ -242,20 +275,21 @@ def task_pool(method_table, hp_table, data_table, fold_table):
     n_fold = len(fold_table)
     n_task = n_hp * n_fold
     task_ind = 1
-    task_table = pandas.DataFrame(columns=["method", "hp", "data", "fold"], index=np.arange(1, n_task + 1))
+    task_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold"], index=np.arange(1, n_task + 1))
     
     for method in method_table:
         method_str = method.__name__
+        print method_str
         for hp_ind, hp in hp_table[method_str].iterrows():
             for fold_ind, fold in fold_table.iterrows():
                 task_table.ix[task_ind, "method"] = method
                 task_table.ix[task_ind, "hp"] = hp_ind
                 task_table.ix[task_ind, "data"] = method_str
-                task_table.ix[task_ind, "fold"] = fold_ind
+                task_table.ix[task_ind, "fold_index"] = fold["fold_index"]
+                task_table.ix[task_ind, "i_rep"] = fold["i_rep"]
+                task_table.ix[task_ind, "i_fold"] = fold["i_fold"]
                 task_ind += 1
 
-    pickle.dump(task_table, open("task_table.p", "wb"))
-    print "[INFO] dump to task_table.p!"
     return task_table
 
 
@@ -267,13 +301,18 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
     if fold_assign_method == "SNP":
         task_table["auroc"] = -1.0
         task_table["aupvr"] = -1.0
-    else:
+    elif fold_assign_method == "LOCUS":
         task_table["avgrank"] = -1.0
+    else:
+        print "Invalid fold assign method!"
+        exit(0)
     
+
     if ncpus == -1:
         n_cores = multiprocessing.cpu_count()
     else:
         n_cores = ncpus
+
 
     p = multiprocessing.Pool(processes=n_cores)
     result_pool = []
@@ -286,8 +325,8 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
         hp = hp_table[method_name].ix[hp_ind, "hp"] # time: 0.0004
         data_ind = task["data"] # time: 3.0e-5
         data = data_table[data_ind] # time: 9.0e-7
-        fold_ind = task["fold"] # time: 2.0e-5
-        fold = fold_table.loc[[fold_ind]] # time: 6.0e-4
+        fold_index = task["fold_index"] # time: 2.0e-5
+        fold = fold_table.loc[[fold_index]] # time: 6.0e-4
         args = (data, hp, fold, fold_assign_method, task_no) # time: 5.0e-6
         result_pool.append(p.apply_async(method, args=args))
         print "[INFO] a job submitted!", "task_no", task_no
@@ -321,15 +360,80 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
 
 
 def cerenkov_analysis(fold_assign_method):
+
+    sns.set(style="whitegrid", color_codes=True)
+
     # //TODO check if all the files are there
     method_table = pickle.load(open("method_table.p", "rb"))
     data_table = pickle.load(open("data_table.p", "rb"))
     fold_table = pickle.load(open("fold_table.p", "rb"))
     hp_table = pickle.load(open("hp_table.p", "rb"))
     task_table = pickle.load(open("task_table.p", "rb"))
+    
+    analysis = {"hp_optimal":{}}
 
     if fold_assign_method == "SNP":
-        pass
+
+    	# analyze results
+        plot_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold", "auroc", "aupvr"])
+
+        for i, gb_i in task_table.groupby(["method"]):
+            method = i
+            hp_optimal = 0
+            aupvr_optimal = -1.0
+
+            for j, gb_j in gb_i.groupby(["hp"]):
+                if gb_j["aupvr"].mean() > aupvr_optimal:
+                    hp_optimal = j
+                    aupvr_optimal = gb_j["aupvr"].mean()
+            
+            analysis["hp_optimal"][i] = hp_table[i].ix[j, "hp"]
+            plot_table = plot_table.append(task_table.loc[(task_table["method"] == method) & (task_table["hp"] == hp_optimal)], ignore_index=True)
+        
+        analysis["plot_table"] = plot_table
+        pickle.dump(analysis, open("analysis.p", "wb"))
+        print "[INFO] dump to analysis.p!"
+        
+        # plot results
+        plot_auroc = sns.boxplot(x="method", y="auroc", data=plot_table).get_figure()
+        plot_auroc.savefig("auroc.pdf")
+        print "[INFO] auroc figure saved to auroc.pdf!"
+        
+        plot_auroc.clf()
+
+        plot_aupvr = sns.boxplot(x="method", y="aupvr", data=plot_table).get_figure()
+        plot_aupvr.savefig("aupvr.pdf")
+        print "[INFO] aupvr figure saved to aupvr.pdf!"
+
+    elif fold_assign_method == "LOCUS":
+
+        plot_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold", "avgrank"])
+
+        for i, gb_i in task_table.groupby(["method"]):
+            method = i
+            hp_optimal = 0
+            avgrank_optimal = float("inf")
+
+            for j, gb_j in gb_i.groupby(["hp"]):
+                if gb_j["avgrank"].mean() < avgrank_optimal:
+                    hp_optimal = j
+                    avgrank_optimal = gb_j["avgrank"].mean()
+            
+            analysis["hp_optimal"][i] = hp_table[i].ix[j, "hp"]
+            plot_table = plot_table.append(task_table.loc[(task_table["method"] == method) & (task_table["hp"] == hp_optimal)], ignore_index=True)
+
+        analysis["plot_table"] = plot_table
+        pickle.dump(analysis, open("analysis.p", "wb"))
+        print "[INFO] dump to analysis.p!"
+
+        # plot results
+        plot_avgrank = sns.boxplot(x="method", y="avgrank", data=plot_table).get_figure()
+        plot_avgrank.savefig("avgrank.pdf")
+        print "[INFO] avgrank figure saved to avgrank.pdf!"
+
+    else:
+        print "Invalid fold assign method!"
+        exit(0)
 
 
 
@@ -359,9 +463,9 @@ def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
 
     y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
     if fold_assign_method == "LOCUS":
-        rank_test = pandas.DataFrame(data=y_test_probs, columns=["probs"])
+        rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
-        rank_test["label"] = y_test
+        rank_test["label"] = y_test.values
         rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
         avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
         result = {"avgrank": avgrank, "task_no": task_no}
@@ -380,6 +484,46 @@ def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
 
 
 
+def cerenkov_t(dataset, hyperparameters, fold, fold_assign_method, task_no):
+    
+    if fold_assign_method == "LOCUS":
+        feat = dataset.drop(["label", "group_id"], axis=1)
+    else:
+        feat = dataset.drop(["label"], axis=1)
+
+    label = dataset["label"]
+
+    train_index = fold["train_index"].values[0].tolist()
+    test_index = fold["test_index"].values[0].tolist()
+
+    X_train = feat.loc[train_index]
+    y_train = label.loc[train_index]
+    X_test = feat.loc[test_index]
+    y_test = label.loc[test_index]
+
+    clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
+    clf_cerenkov17.fit(X_train, y_train)
+
+    y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+    if fold_assign_method == "LOCUS":
+        rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
+        rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
+        rank_test["label"] = y_test.values
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+        avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
+        result = {"avgrank": avgrank, "task_no": task_no}
+    else:
+        fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
+        auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+
+        precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+        aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+        
+        result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
+    print "[INFO] cerenkov_t done! task no: ", task_no
+    return result
+
+
 
 def gwava_rf(dataset, hyperparameters, fold, fold_assign_method):
     pass
@@ -390,7 +534,3 @@ def gwava_rf(dataset, hyperparameters, fold, fold_assign_method):
 
 def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method):
     pass
-
-
-
-
