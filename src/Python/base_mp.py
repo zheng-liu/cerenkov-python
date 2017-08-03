@@ -21,9 +21,9 @@ import multiprocessing
 # parallel cerenkov framework
 def method_generate():
     
-    method_table = [cerenkov17, cerenkov_t]
-    # pickle.dump(method_table, open("method_table.p", "wb"))
-    # print "[INFO] dump to method_table.p!"
+    method_table = [cerenkov17, gwava_xgb, gwava_rf]
+    pickle.dump(method_table, open("method_table.p", "wb"))
+    print "[INFO] dump to method_table.p!"
     return method_table
 
 
@@ -35,6 +35,7 @@ def locus_group(dataset, cutoff_bp):
         * input: feature matrix
         * output: feature matrix with group id
     """
+
     feat = dataset  # TODO check if assigning value by "=" will have reference
     feat["group_id"] = ""
     chromSet = [str(i) for i in range(1, 23)]+["X"]
@@ -186,32 +187,55 @@ def fold_generate(dataset, n_rep, n_fold, fold_assign_method, **kwargs):
 
 
 
-def hp_generate():
-    # generate the hyperparameters for each classifier
-    learning_rate = [0.1]
-    n_estimators = [30]
-    gamma = [10]
-    subsample = [1]
-    colsample_bytree = [0.5, 0.55]
-    base_score = [0.1082121]
-    scale_pos_weight = [1]
-    max_depth = [5,6]
-    seed=[1337]
-    nthread = [1]
+def hp_generate(pos_neg_ratio):
 
-    hp_comb = itertools.product(
-    	              learning_rate, 
-                      n_estimators,
-                      gamma,
-                      subsample,
-                      colsample_bytree,
-                      base_score,
-                      scale_pos_weight,
-                      max_depth,
-                      seed,
-                      nthread)
-    #n_hp = len(list(hp_comb))
-    hp_key = (
+    # xgboost-GBDT: 3888
+
+    # maximize -- AUPVR
+    # eta = 0.1
+    # gamma = 10
+    # n_estimators = 30
+    # max_depth=6
+    # subsample = 1.0
+    # colsample_bytree = 0.85
+    # scale_pos_weight = 1
+
+    # minimize -- AVGRANK
+    # eta = 0.1
+    # gamma = 100
+    # n_estimators = 30
+    # max_depth = 6
+    # subsample = 0.85
+    # scale_pos_weight = 8
+    
+
+    # generate the hyperparameters for each classifier
+
+    # cerenkov17 hp
+    cerenkov17_learning_rate = [0.01, 0.05, 0.1]
+    cerenkov17_n_estimators = [10, 20, 30]
+    cerenkov17_gamma = [0, 1, 10, 100]
+    cerenkov17_subsample = [0.5, 0.75, 0.85, 1.0]
+    cerenkov17_colsample_bytree = [0.5, 0.75, 0.85]
+    cerenkov17_base_score = [pos_neg_ratio]
+    cerenkov17_scale_pos_weight = [0.125, 1.0, 8.0]
+    cerenkov17_max_depth = [6, 8, 10]
+    cerenkov17_seed=[1337]
+    cerenkov17_nthread = [1]
+
+    cerenkov17_hp_comb = itertools.product(
+    	              cerenkov17_learning_rate, 
+                      cerenkov17_n_estimators,
+                      cerenkov17_gamma,
+                      cerenkov17_subsample,
+                      cerenkov17_colsample_bytree,
+                      cerenkov17_base_score,
+                      cerenkov17_scale_pos_weight,
+                      cerenkov17_max_depth,
+                      cerenkov17_seed,
+                      cerenkov17_nthread)
+
+    cerenkov17_hp_key = (
         "learning_rate",
         "n_estimators",
         "gamma",
@@ -222,16 +246,47 @@ def hp_generate():
         "max_depth",
         "seed",
         "nthread"
-    	)
-    hp_col = [dict(zip(hp_key, hp)) for hp in hp_comb]
-    n_hp = len(hp_col)
-    cerenkov17_hp = pd.DataFrame(columns=["hp_no", "hp"], index=np.arange(1, n_hp + 1))
-    cerenkov17_hp["hp_no"] = np.arange(1, n_hp + 1)
-    cerenkov17_hp["hp"] = hp_col
+        )
+    cerenkov17_hp_col = [dict(zip(cerenkov17_hp_key, cerenkov17_hp)) for cerenkov17_hp in cerenkov17_hp_comb]
+    cerenkov17_n_hp = len(cerenkov17_hp_col)
+    cerenkov17_hp = pd.DataFrame(columns=["hp_no", "hp"], index=np.arange(1, cerenkov17_n_hp + 1))
+    cerenkov17_hp["hp_no"] = np.arange(1, cerenkov17_n_hp + 1)
+    cerenkov17_hp["hp"] = cerenkov17_hp_col
 
+
+    # gwava_rf
+    gwava_rf_n_estimators = [100]
+    gwava_rf_max_features = [14] # //TODO check if max_features is the mtry in R Ranger Random Forest
+    gwava_rf_bootstrap = [True]
+    gwava_rf_n_jobs = [1]
+    gwava_rf_random_state = [1337]
+
+    gwava_rf_hp_comb = itertools.product(
+                       gwava_rf_n_estimators,
+                       gwava_rf_max_features,
+                       gwava_rf_bootstrap,
+                       gwava_rf_n_jobs,
+                       gwava_rf_random_state)
+
+    gwava_rf_hp_key = (
+        "n_estimators",
+        "max_features",
+        "bootstrap",
+        "n_jobs",
+        "random_state"
+        )
+    
+    gwava_rf_hp_col = [dict(zip(gwava_rf_hp_key, gwava_rf_hp)) for gwava_rf_hp in gwava_rf_hp_comb]
+    gwava_rf_n_hp = len(gwava_rf_hp_col)
+    gwava_rf_hp = pd.DataFrame(columns=["hp_no", "hp"], index=np.arange(1, gwava_rf_n_hp + 1))
+    gwava_rf_hp["hp_no"] = np.arange(1, gwava_rf_n_hp + 1)
+    gwava_rf_hp["hp"] = gwava_rf_hp_col
+
+    # generate hp_table
     hp_table = {
         "cerenkov17": cerenkov17_hp,
-        "cerenkov_t": cerenkov17_hp
+        "gwava_xgb": cerenkov17_hp,
+        "gwava_rf": gwava_rf_hp
     }
     
     pickle.dump(hp_table, open("hp_table.p", "wb"))
@@ -289,6 +344,7 @@ def task_pool(method_table, hp_table, data_table, fold_table):
                 task_table.ix[task_ind, "i_rep"] = fold["i_rep"]
                 task_table.ix[task_ind, "i_fold"] = fold["i_fold"]
                 task_ind += 1
+                print task_ind
 
     return task_table
 
@@ -484,7 +540,95 @@ def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
 
 
 
-def cerenkov_t(dataset, hyperparameters, fold, fold_assign_method, task_no):
+# def cerenkov_t(dataset, hyperparameters, fold, fold_assign_method, task_no):
+    
+#     if fold_assign_method == "LOCUS":
+#         feat = dataset.drop(["label", "group_id"], axis=1)
+#     else:
+#         feat = dataset.drop(["label"], axis=1)
+
+#     label = dataset["label"]
+
+#     train_index = fold["train_index"].values[0].tolist()
+#     test_index = fold["test_index"].values[0].tolist()
+
+#     X_train = feat.loc[train_index]
+#     y_train = label.loc[train_index]
+#     X_test = feat.loc[test_index]
+#     y_test = label.loc[test_index]
+
+#     clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
+#     clf_cerenkov17.fit(X_train, y_train)
+
+#     y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+#     if fold_assign_method == "LOCUS":
+#         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
+#         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
+#         rank_test["label"] = y_test.values
+#         rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+#         avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
+#         result = {"avgrank": avgrank, "task_no": task_no}
+#     else:
+#         fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
+#         auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+
+#         precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+#         aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+        
+#         result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
+#     print "[INFO] cerenkov_t done! task no: ", task_no
+#     return result
+
+
+
+def gwava_rf(dataset, hyperparameters, fold, fold_assign_method, task_no):
+    
+    if fold_assign_method == "LOCUS":
+        feat = dataset.drop(["label", "group_id"], axis=1)
+    elif fold_assign_method == "SNP":
+        feat = dataset.drop(["label"], axis=1)
+    
+    label = dataset["label"]
+
+    train_index = fold["train_index"].values[0].tolist()
+    test_index = fold["test_index"].values[0].tolist()
+
+    X_train = feat.loc[train_index]
+    y_train = label.loc[train_index]
+    X_test = feat.loc[test_index]
+    y_test = label.loc[test_index]
+
+    clf_gwava_rf = sklearn.ensemble.RandomForestClassifier(**hyperparameters)
+    clf_gwava_rf.fit(X_train, y_train)
+
+    y_test_probs = clf_gwava_rf.predict_proba(X_test)[:, clf_gwava_rf.classes_ == 1]
+
+    if fold_assign_method == "LOCUS":
+        rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
+        rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
+        rank_test["label"] = y_test.values
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+        avgrank = rank_test.loc[rank_test["label"] == 1]["rank"].mean()
+
+        result = {"avgrank": avgrank, "task_no": task_no}
+
+    else:
+        fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
+        auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+
+        precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+        aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+
+        result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
+
+    print "[INFO] gwava_rf done! task no: ", task_no
+
+    return result
+
+
+
+
+def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method, task_no):
     
     if fold_assign_method == "LOCUS":
         feat = dataset.drop(["label", "group_id"], axis=1)
@@ -501,10 +645,10 @@ def cerenkov_t(dataset, hyperparameters, fold, fold_assign_method, task_no):
     X_test = feat.loc[test_index]
     y_test = label.loc[test_index]
 
-    clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
-    clf_cerenkov17.fit(X_train, y_train)
+    clf_gwava_xgb = xgboost.XGBClassifier(**hyperparameters)
+    clf_gwava_xgb.fit(X_train, y_train)
 
-    y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+    y_test_probs = clf_gwava_xgb.predict_proba(X_test)[:, clf_gwava_xgb.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
     if fold_assign_method == "LOCUS":
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
@@ -520,17 +664,5 @@ def cerenkov_t(dataset, hyperparameters, fold, fold_assign_method, task_no):
         aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
         
         result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
-    print "[INFO] cerenkov_t done! task no: ", task_no
+    print "[INFO] gwava_xgb done! task no: ", task_no
     return result
-
-
-
-def gwava_rf(dataset, hyperparameters, fold, fold_assign_method):
-    pass
-
-
-
-
-
-def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method):
-    pass
