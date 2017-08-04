@@ -211,17 +211,38 @@ def hp_generate(pos_neg_ratio):
 
     # generate the hyperparameters for each classifier
 
-    # cerenkov17 hp
-    cerenkov17_learning_rate = [0.01, 0.05, 0.1]
-    cerenkov17_n_estimators = [10, 20, 30]
-    cerenkov17_gamma = [0, 1, 10, 100]
-    cerenkov17_subsample = [0.5, 0.75, 0.85, 1.0]
-    cerenkov17_colsample_bytree = [0.5, 0.75, 0.85]
-    cerenkov17_base_score = [pos_neg_ratio]
-    cerenkov17_scale_pos_weight = [0.125, 1.0, 8.0]
-    cerenkov17_max_depth = [6, 8, 10]
+    # # cerenkov17 hp
+    # cerenkov17_learning_rate = [0.01, 0.05, 0.1]
+    # cerenkov17_n_estimators = [10, 20, 30]
+    # cerenkov17_gamma = [0, 1, 10, 100]
+    # cerenkov17_subsample = [0.5, 0.75, 0.85, 1.0]
+    # cerenkov17_colsample_bytree = [0.5, 0.75, 0.85]
+    # cerenkov17_scale_pos_weight = [0.125, 1.0, 8.0]
+    # cerenkov17_max_depth = [6, 8, 10]
+    # cerenkov17_seed=[1337]
+    # cerenkov17_nthread = [1]
+
+    # cerenkov17 hp maximize AUPVR
+    cerenkov17_learning_rate = [0.1]
+    cerenkov17_n_estimators = [30]
+    cerenkov17_gamma = [10]
+    cerenkov17_subsample = [1.0]
+    cerenkov17_colsample_bytree = [0.85]
+    cerenkov17_scale_pos_weight = [1.0]
+    cerenkov17_max_depth = [6]
     cerenkov17_seed=[1337]
     cerenkov17_nthread = [1]
+
+    # # cerenkov17 hp maximize AVGRANK
+    # cerenkov17_learning_rate = [0.1]
+    # cerenkov17_n_estimators = [30]
+    # cerenkov17_gamma = [100]
+    # cerenkov17_subsample = [1.0]
+    # cerenkov17_colsample_bytree = [1.0]
+    # cerenkov17_scale_pos_weight = [8.0]
+    # cerenkov17_max_depth = [6]
+    # cerenkov17_seed=[1337]
+    # cerenkov17_nthread = [1]
 
     cerenkov17_hp_comb = itertools.product(
     	              cerenkov17_learning_rate, 
@@ -229,7 +250,6 @@ def hp_generate(pos_neg_ratio):
                       cerenkov17_gamma,
                       cerenkov17_subsample,
                       cerenkov17_colsample_bytree,
-                      cerenkov17_base_score,
                       cerenkov17_scale_pos_weight,
                       cerenkov17_max_depth,
                       cerenkov17_seed,
@@ -241,7 +261,6 @@ def hp_generate(pos_neg_ratio):
         "gamma",
         "subsample",
         "colsample_bytree",
-        "base_score",
         "scale_pos_weight",
         "max_depth",
         "seed",
@@ -344,7 +363,6 @@ def task_pool(method_table, hp_table, data_table, fold_table):
                 task_table.ix[task_ind, "i_rep"] = fold["i_rep"]
                 task_table.ix[task_ind, "i_fold"] = fold["i_fold"]
                 task_ind += 1
-                print task_ind
 
     return task_table
 
@@ -540,54 +558,23 @@ def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
 
 
 
-# def cerenkov_t(dataset, hyperparameters, fold, fold_assign_method, task_no):
-    
-#     if fold_assign_method == "LOCUS":
-#         feat = dataset.drop(["label", "group_id"], axis=1)
-#     else:
-#         feat = dataset.drop(["label"], axis=1)
-
-#     label = dataset["label"]
-
-#     train_index = fold["train_index"].values[0].tolist()
-#     test_index = fold["test_index"].values[0].tolist()
-
-#     X_train = feat.loc[train_index]
-#     y_train = label.loc[train_index]
-#     X_test = feat.loc[test_index]
-#     y_test = label.loc[test_index]
-
-#     clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
-#     clf_cerenkov17.fit(X_train, y_train)
-
-#     y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
-#     if fold_assign_method == "LOCUS":
-#         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
-#         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
-#         rank_test["label"] = y_test.values
-#         rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
-#         avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
-#         result = {"avgrank": avgrank, "task_no": task_no}
-#     else:
-#         fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
-#         auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
-
-#         precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
-#         aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
-        
-#         result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
-#     print "[INFO] cerenkov_t done! task no: ", task_no
-#     return result
-
-
 
 def gwava_rf(dataset, hyperparameters, fold, fold_assign_method, task_no):
     
+    # NaN value check
+    if pd.isnull(dataset).values.any() == True:
+        print "[ERROR] NaN value detected in dataset!"
+        exit(0)
+
+
     if fold_assign_method == "LOCUS":
         feat = dataset.drop(["label", "group_id"], axis=1)
     elif fold_assign_method == "SNP":
         feat = dataset.drop(["label"], axis=1)
-    
+    else:
+        print "Invalid fold assign method!"
+        exit(0)
+
     label = dataset["label"]
 
     train_index = fold["train_index"].values[0].tolist()
