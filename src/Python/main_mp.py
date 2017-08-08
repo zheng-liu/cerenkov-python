@@ -42,7 +42,7 @@ for chrom in chromSet:
 data_gwava.rename(columns={"cls": "label"}, inplace=True)
 
 pos_neg_ratio = len(data_osu[data_osu["label"] == 1])*1.0 / len(data_osu[data_osu["label"] == 0])
-sampling_method = "SNP"
+sampling_method = "LOCUS"
 kwargs={}
 kwargs["cutoff_bp"] = 50000
 kwargs["slope_allowed"] = 0.5
@@ -66,4 +66,4 @@ print "cerenkov_ml TIME= ", e_time - s_time
 ################################
 # data analysis
 ################################
-cerenkov_analysis(fold_assign_method=sampling_method)
+# cerenkov_analysis(fold_assign_method=sampling_method)

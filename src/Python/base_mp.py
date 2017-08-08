@@ -376,6 +376,8 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
         task_table["auroc"] = -1.0
         task_table["aupvr"] = -1.0
     elif fold_assign_method == "LOCUS":
+        task_table["auroc"] = -1.0
+        task_table["aupvr"] = -1.0
         task_table["avgrank"] = -1.0
     else:
         print "Invalid fold assign method!"
@@ -419,8 +421,10 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
         for result in result_pool:
             result = result.get()
             result_task_no = result["task_no"]
+            task_table.ix[result_task_no, "auroc"] = result["auroc"]
+            task_table.ix[result_task_no, "aupvr"] = result["aupvr"]
             task_table.ix[result_task_no, "avgrank"] = result["avgrank"]
-    
+
     # convert function to string of function name
     for task_no, task in task_table.iterrows():
         task_table.ix[task_no, "method"] = task["method"].__name__
@@ -433,81 +437,81 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
 
 
 
-def cerenkov_analysis(fold_assign_method):
+# def cerenkov_analysis(fold_assign_method):
 
-    sns.set(style="whitegrid", color_codes=True)
+#     sns.set(style="whitegrid", color_codes=True)
 
-    # //TODO check if all the files are there
-    method_table = pickle.load(open("method_table.p", "rb"))
-    data_table = pickle.load(open("data_table.p", "rb"))
-    fold_table = pickle.load(open("fold_table.p", "rb"))
-    hp_table = pickle.load(open("hp_table.p", "rb"))
-    task_table = pickle.load(open("task_table.p", "rb"))
+#     # //TODO check if all the files are there
+#     method_table = pickle.load(open("method_table.p", "rb"))
+#     data_table = pickle.load(open("data_table.p", "rb"))
+#     fold_table = pickle.load(open("fold_table.p", "rb"))
+#     hp_table = pickle.load(open("hp_table.p", "rb"))
+#     task_table = pickle.load(open("task_table.p", "rb"))
     
-    analysis = {"hp_optimal":{}}
+#     analysis = {"hp_optimal":{}}
 
-    if fold_assign_method == "SNP":
+#     if fold_assign_method == "SNP":
 
-    	# analyze results
-        plot_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold", "auroc", "aupvr"])
+#     	# analyze results
+#         plot_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold", "auroc", "aupvr"])
 
-        for i, gb_i in task_table.groupby(["method"]):
-            method = i
-            hp_optimal = 0
-            aupvr_optimal = -1.0
+#         for i, gb_i in task_table.groupby(["method"]):
+#             method = i
+#             hp_optimal = 0
+#             aupvr_optimal = -1.0
 
-            for j, gb_j in gb_i.groupby(["hp"]):
-                if gb_j["aupvr"].mean() > aupvr_optimal:
-                    hp_optimal = j
-                    aupvr_optimal = gb_j["aupvr"].mean()
+#             for j, gb_j in gb_i.groupby(["hp"]):
+#                 if gb_j["aupvr"].mean() > aupvr_optimal:
+#                     hp_optimal = j
+#                     aupvr_optimal = gb_j["aupvr"].mean()
             
-            analysis["hp_optimal"][i] = hp_table[i].ix[j, "hp"]
-            plot_table = plot_table.append(task_table.loc[(task_table["method"] == method) & (task_table["hp"] == hp_optimal)], ignore_index=True)
+#             analysis["hp_optimal"][i] = hp_table[i].ix[j, "hp"]
+#             plot_table = plot_table.append(task_table.loc[(task_table["method"] == method) & (task_table["hp"] == hp_optimal)], ignore_index=True)
         
-        analysis["plot_table"] = plot_table
-        pickle.dump(analysis, open("analysis.p", "wb"))
-        print "[INFO] dump to analysis.p!"
+#         analysis["plot_table"] = plot_table
+#         pickle.dump(analysis, open("analysis.p", "wb"))
+#         print "[INFO] dump to analysis.p!"
         
-        # plot results
-        plot_auroc = sns.boxplot(x="method", y="auroc", data=plot_table).get_figure()
-        plot_auroc.savefig("auroc.pdf")
-        print "[INFO] auroc figure saved to auroc.pdf!"
+#         # plot results
+#         plot_auroc = sns.boxplot(x="method", y="auroc", data=plot_table).get_figure()
+#         plot_auroc.savefig("auroc.pdf")
+#         print "[INFO] auroc figure saved to auroc.pdf!"
         
-        plot_auroc.clf()
+#         plot_auroc.clf()
 
-        plot_aupvr = sns.boxplot(x="method", y="aupvr", data=plot_table).get_figure()
-        plot_aupvr.savefig("aupvr.pdf")
-        print "[INFO] aupvr figure saved to aupvr.pdf!"
+#         plot_aupvr = sns.boxplot(x="method", y="aupvr", data=plot_table).get_figure()
+#         plot_aupvr.savefig("aupvr.pdf")
+#         print "[INFO] aupvr figure saved to aupvr.pdf!"
 
-    elif fold_assign_method == "LOCUS":
+#     elif fold_assign_method == "LOCUS":
 
-        plot_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold", "avgrank"])
+#         plot_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold", "avgrank"])
 
-        for i, gb_i in task_table.groupby(["method"]):
-            method = i
-            hp_optimal = 0
-            avgrank_optimal = float("inf")
+#         for i, gb_i in task_table.groupby(["method"]):
+#             method = i
+#             hp_optimal = 0
+#             avgrank_optimal = float("inf")
 
-            for j, gb_j in gb_i.groupby(["hp"]):
-                if gb_j["avgrank"].mean() < avgrank_optimal:
-                    hp_optimal = j
-                    avgrank_optimal = gb_j["avgrank"].mean()
+#             for j, gb_j in gb_i.groupby(["hp"]):
+#                 if gb_j["avgrank"].mean() < avgrank_optimal:
+#                     hp_optimal = j
+#                     avgrank_optimal = gb_j["avgrank"].mean()
             
-            analysis["hp_optimal"][i] = hp_table[i].ix[j, "hp"]
-            plot_table = plot_table.append(task_table.loc[(task_table["method"] == method) & (task_table["hp"] == hp_optimal)], ignore_index=True)
+#             analysis["hp_optimal"][i] = hp_table[i].ix[j, "hp"]
+#             plot_table = plot_table.append(task_table.loc[(task_table["method"] == method) & (task_table["hp"] == hp_optimal)], ignore_index=True)
 
-        analysis["plot_table"] = plot_table
-        pickle.dump(analysis, open("analysis.p", "wb"))
-        print "[INFO] dump to analysis.p!"
+#         analysis["plot_table"] = plot_table
+#         pickle.dump(analysis, open("analysis.p", "wb"))
+#         print "[INFO] dump to analysis.p!"
 
-        # plot results
-        plot_avgrank = sns.boxplot(x="method", y="avgrank", data=plot_table).get_figure()
-        plot_avgrank.savefig("avgrank.pdf")
-        print "[INFO] avgrank figure saved to avgrank.pdf!"
+#         # plot results
+#         plot_avgrank = sns.boxplot(x="method", y="avgrank", data=plot_table).get_figure()
+#         plot_avgrank.savefig("avgrank.pdf")
+#         print "[INFO] avgrank figure saved to avgrank.pdf!"
 
-    else:
-        print "Invalid fold assign method!"
-        exit(0)
+#     else:
+#         print "Invalid fold assign method!"
+#         exit(0)
 
 
 
@@ -536,21 +540,31 @@ def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
     clf_cerenkov17.fit(X_train, y_train)
 
     y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+    
     if fold_assign_method == "LOCUS":
+
+        fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
+        auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+        precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+        aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
         rank_test["label"] = y_test.values
-        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="min")
         avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
-        result = {"avgrank": avgrank, "task_no": task_no}
+
+        result = {"auroc": auroc, "aupvr": aupvr, "avgrank": avgrank, "task_no": task_no}
+
     else:
+
         fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
         auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
-
         precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
         aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
         
         result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
+
     print "[INFO] cerenkov17 done! task no: ", task_no
     return result
 
@@ -591,13 +605,19 @@ def gwava_rf(dataset, hyperparameters, fold, fold_assign_method, task_no):
     y_test_probs = clf_gwava_rf.predict_proba(X_test)[:, clf_gwava_rf.classes_ == 1]
 
     if fold_assign_method == "LOCUS":
+
+        fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
+        auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+        precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+        aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
         rank_test["label"] = y_test.values
         rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
         avgrank = rank_test.loc[rank_test["label"] == 1]["rank"].mean()
 
-        result = {"avgrank": avgrank, "task_no": task_no}
+        result = {"auroc": auroc, "aupvr": aupvr, "avgrank": avgrank, "task_no": task_no}
 
     else:
         fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
@@ -636,14 +656,24 @@ def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method, task_no):
     clf_gwava_xgb.fit(X_train, y_train)
 
     y_test_probs = clf_gwava_xgb.predict_proba(X_test)[:, clf_gwava_xgb.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
+    
     if fold_assign_method == "LOCUS":
+
+        fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
+        auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
+        precision, recall, _ = sklearn.metrics.precision_recall_curve(y_test, y_test_probs)
+        aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
+        
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
         rank_test["label"] = y_test.values
         rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
         avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
-        result = {"avgrank": avgrank, "task_no": task_no}
+        
+        result = {"auroc": auroc, "aupvr": aupvr, "avgrank": avgrank, "task_no": task_no}
+    
     else:
+
         fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
         auroc = sklearn.metrics.roc_auc_score(y_test, y_test_probs)
 
@@ -651,5 +681,6 @@ def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method, task_no):
         aupvr = sklearn.metrics.average_precision_score(y_test, y_test_probs)
         
         result = {"auroc": auroc, "aupvr": aupvr, "task_no": task_no}
+
     print "[INFO] gwava_xgb done! task no: ", task_no
     return result
