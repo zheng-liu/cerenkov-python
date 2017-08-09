@@ -5,9 +5,11 @@ import math, time, thread, sys
 from numpy.random import RandomState
 import pandas as pd
 import numpy as np
+import scipy
 import xgboost
 import sklearn
 import sklearn.ensemble
+from sklearn.utils import resample
 import matplotlib as mlp
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -614,7 +616,7 @@ def gwava_rf(dataset, hyperparameters, fold, fold_assign_method, task_no):
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
         rank_test["label"] = y_test.values
-        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="min")
         avgrank = rank_test.loc[rank_test["label"] == 1]["rank"].mean()
 
         result = {"auroc": auroc, "aupvr": aupvr, "avgrank": avgrank, "task_no": task_no}
@@ -667,7 +669,7 @@ def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method, task_no):
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
         rank_test["label"] = y_test.values
-        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False)
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="min")
         avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
         
         result = {"auroc": auroc, "aupvr": aupvr, "avgrank": avgrank, "task_no": task_no}
