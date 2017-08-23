@@ -37,19 +37,19 @@ g_args <- commandArgs(trailingOnly=TRUE)
 ## ============================ define global parameters =============================
 
 g_par <- list(
-    num_folds_cross_validation = 5,    ## for fig. 3:    10
-    num_cv_replications = 10,          ## for fig. 3:   128
-    flag_create_fork_cluster = TRUE,   ## for fig. 3:  TRUE
-    override_num_fork_processes = 64,  ## for EC2, set to 64; for my MBP, set to 8
-    notify_by_text_msg = FALSE,
+    num_folds_cross_validation = 5,     ## we are standardizing on 5-fold CV
+    num_cv_replications = 200,          ## set to anywhere from 1--200, typically
+    flag_create_fork_cluster = TRUE,    ## TRUE or FALSE
+    override_num_fork_processes = 64,   ## for EC2, set to 64; for my MBP, set to 8
     show_progress_bar = FALSE,
-    flag_locus_sampling = TRUE,        ## set to false if you want SNP-level sampling
-    flag_xgb_importance = FALSE,       ## if you set this to TRUE, make sure you set num_cv_replications=1 and num_folds_cross_validation=1
+    notify_by_text_msg = TRUE,
+    flag_locus_sampling = TRUE,         ## set to false if you want SNP-level sampling
+    flag_xgb_importance = FALSE,        ## if you set this to TRUE, make sure you set num_cv_replications=1 and num_folds_cross_validation=1
     random_number_seed = if (is.na(g_args[1])) 1337 else as.integer(g_args[1]),
     nthreads_per_process = 1,
     flag_randomize_classifier_order = FALSE,
     flag_create_ec2_instances = FALSE,  ## don't set this to true if you set "flag_create_fork_cluster" to true
-    analysis_label = "xgboost_tuning",
+    analysis_label = "compare_with_gwava",
     output_file_base_name = "cerenkov_ml_results",
     parallel_use_load_balancing = TRUE,
     debug_file_parallel=""              ## set to empty string for production run (makes error text go to stdout)
@@ -71,18 +71,19 @@ g_label_vec <- as.integer(as.character(g_feat_cerenkov2_df$label))
 
 ## ============================== load feature data; check for problems with feature data =================================
 
-##print("loading GWAVA data")
+print("loading GWAVA data")
 
-##load(file="features_GWAVA_osu18.Rdata") ## creates an R object called "g_feat_gwava_df"
-##stopifnot(g_feature_matrix_is_OK(g_feat_gwava_df))
-##stopifnot(g_snp_names == rownames(g_feat_gwava_df))
-##stopifnot(g_feat_cerenkov2_df$label == g_feat_gwava_df$label)
-##g_feat_gwava_matrix_sparse <- sparse.model.matrix(label ~ .-1, data=g_feat_gwava_df)
+load(file="features_gwava_osu18.Rdata") ## creates an R object called "g_feat_gwava_df"
+stopifnot(g_feature_matrix_is_OK(g_feat_gwava_df))
+stopifnot(g_snp_names == rownames(g_feat_gwava_df))
+stopifnot(g_feat_cerenkov2_df$label == g_feat_gwava_df$label)
+g_feat_gwava_matrix_sparse <- sparse.model.matrix(label ~ .-1, data=g_feat_gwava_df)
 
 ## build a list of the feature matrices that we will need
 g_classifier_feature_matrices_list <- list(
-   feat_cerenkov2_sparsematrix=g_feat_cerenkov2_matrix_sparse
-##   feat_GWAVA_sparsematrix=g_feat_gwava_matrix_sparse
+   feat_cerenkov2_sparsematrix=g_feat_cerenkov2_matrix_sparse,
+   feat_GWAVA_sparsematrix=g_feat_gwava_matrix_sparse,
+   feat_GWAVA_df=g_feat_gwava_df[, which(names(g_feat_gwava_df) != "label")]
 )
 
 
@@ -97,8 +98,15 @@ g_classifier_function_xgboost <- g_make_classifier_function_xgboost(p_nthread=g_
                                                                     p_make_objective_function=function(...){"binary:logistic"},
                                                                     p_case_group_ids=g_snp_locus_ids)
 
+
+g_classifier_function_ranger <- g_make_classifier_function_ranger(p_nthread=g_par$nthreads_per_process,
+                                                                  p_get_perf_results=g_get_perf_results,
+                                                                  p_feature_importance_type="impurity")
+
+
 g_classifier_functions_list <- list(
-    XGB=g_classifier_function_xgboost
+    XGB=g_classifier_function_xgboost,
+    ranger=g_classifier_function_ranger
 )
 
 ## ============================== assemble final list of feature matrices  =================================
@@ -106,26 +114,36 @@ g_classifier_functions_list <- list(
 ## free up memory
 rm(g_feat_cerenkov2_df)
 rm(g_feat_cerenkov2_matrix_sparse)
-##rm(g_feat_gwava_df)
-##rm(g_feat_gwava_matrix_sparse)
+rm(g_feat_gwava_df)
+rm(g_feat_gwava_matrix_sparse)
 
 
 ## ============================== make hyperparameter lists  =================================
 
 ## ------------------ xgboost hyperparameter lists --------------
 
-g_hyperparameter_grid_list_xgb <- g_make_hyperparameter_grid_list(list(eta=c(0.05, 0.1, 0.15, 0.2),
-                                                                       nrounds=c(10, 20, 30, 40),
-                                                                       gamma=c(5, 10, 100, 200),
-                                                                       lambda=c(0.1, 1.0, 5.0, 10.0),
-                                                                       subsample=c(0.75, 0.85, 1),
+g_hyperparameter_xgb_gwava_best <- g_make_hyperparameter_grid_list(list(eta=c(0.15),
+                                                                       nrounds=c(40),
+                                                                       gamma=c(5),
+                                                                       lambda=c(10),
+                                                                       subsample=c(1),
 #                                                                       colsample_bytree=c(0.75, 0.85, 1.0),
                                                                        base_score=g_class_count_frac_positive,
-                                                                       scale_pos_weight=c(1.0, 14.45),
-                                                                       max_depth=c(5, 6, 7)))
+                                                                       scale_pos_weight=c(1.0),
+                                                                       max_depth=c(7)))
+
+g_hyperparameter_xgb_osu_best <- g_make_hyperparameter_grid_list(list(eta=c(0.1),
+                                                                       nrounds=c(40),
+                                                                       gamma=c(10),
+                                                                       lambda=c(1),
+                                                                       subsample=c(1),
+#                                                                       colsample_bytree=c(0.75, 0.85, 1.0),
+                                                                       base_score=g_class_count_frac_positive,
+                                                                       scale_pos_weight=c(1.0),
+                                                                       max_depth=c(7)))
 
 
-g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
+g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_xgb_osu_best,
                                      function(p_hyp) {
                                          list(classifier_feature_matrix_name="feat_cerenkov2_sparsematrix",
                                               classifier_function_name=ifelse(g_par$flag_xgb_importance, "XGB_importance", "XGB"),
@@ -134,26 +152,26 @@ g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
                                               classifier_hyperparameter_list=p_hyp)
                                      })
 
-## g_classifier_list_xgbcustom_OSU <- lapply(g_hyperparameter_grid_list_xgb,
-##                                      function(p_hyp) {
-##                                          list(classifier_feature_matrix_name="feat_cerenkov2_sparsematrix",
-##                                               classifier_function_name="XGB_custom",
-##                                               classifier_hyperparameter_set_type_name="XGB",
-##                                               classifier_set_name="OSU_XGB_custom",
-##                                               classifier_hyperparameter_list=p_hyp)
-##                                      })
+g_classifier_list_xgb_GWAVA <- lapply(g_hyperparameter_xgb_gwava_best,
+                                     function(p_hyp) {
+                                         list(classifier_feature_matrix_name="feat_GWAVA_sparsematrix",
+                                              classifier_function_name=ifelse(g_par$flag_xgb_importance, "XGB_importance", "XGB"),
+                                              classifier_hyperparameter_set_type_name="XGB",
+                                              classifier_set_name="GWAVA_XGB",
+                                              classifier_hyperparameter_list=p_hyp)
+                                     })
 
 
-## g_classifier_list_xgb_GWAVA <- lapply(g_hyperparameter_grid_list_xgb,
-##                                      function(p_hyp) {
-##                                          list(classifier_feature_matrix_name="feat_GWAVA_sparsematrix",
-##                                               classifier_function_name=ifelse(g_par$flag_xgb_importance, "XGB_importance", "XGB"),
-##                                               classifier_hyperparameter_set_type_name="XGB",
-##                                               classifier_set_name="GWAVA_XGB",
-##                                               classifier_hyperparameter_list=p_hyp)
-##                                      })
-
-
+g_classifier_list_gwava_published <- list(list(classifier_feature_matrix_name="feat_GWAVA_df",
+                                             classifier_function_name="ranger",
+                                             classifier_hyperparameter_set_type_name="ranger",
+                                             classifier_set_name="GWAVA_RF_published",
+                                             classifier_hyperparameter_list=list(probability=FALSE,
+                                                                                 mtry=14,
+                                                                                 num.trees=100,  
+                                                                                 weight_positive_class=1,
+                                                                                 replace=TRUE,
+                                                                                 sample.fraction=1)))
 
 ## ------------------ ranger hyperparameter lists --------------
 
@@ -175,8 +193,9 @@ g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
 ## names, incorrect feature matrix names, etc.
 
 g_classifier_list <- c(
-    g_classifier_list_xgb_OSU
-#    g_classifier_list_xgb_GWAVA
+    g_classifier_list_xgb_OSU,
+    g_classifier_list_xgb_GWAVA,
+    g_classifier_list_gwava_published
 )
 
 ## ============================== run invariant machine-learning code =================================

@@ -37,19 +37,19 @@ g_args <- commandArgs(trailingOnly=TRUE)
 ## ============================ define global parameters =============================
 
 g_par <- list(
-    num_folds_cross_validation = 5,    ## for fig. 3:    10
-    num_cv_replications = 10,          ## for fig. 3:   128
-    flag_create_fork_cluster = TRUE,   ## for fig. 3:  TRUE
-    override_num_fork_processes = 64,  ## for EC2, set to 64; for my MBP, set to 8
-    notify_by_text_msg = FALSE,
+    num_folds_cross_validation = 5,     ## for fig. 3:    10
+    num_cv_replications = 10 ,          ## for fig. 3:   128
+    flag_create_fork_cluster = TRUE,    ## for fig. 3:  TRUE
+    override_num_fork_processes = 64,   ## for EC2, set to 64; for my MBP, set to 8
+    notify_by_text_msg = TRUE,
     show_progress_bar = FALSE,
-    flag_locus_sampling = TRUE,        ## set to false if you want SNP-level sampling
-    flag_xgb_importance = FALSE,       ## if you set this to TRUE, make sure you set num_cv_replications=1 and num_folds_cross_validation=1
+    flag_locus_sampling = TRUE,         ## set to false if you want SNP-level sampling
+    flag_xgb_importance = FALSE,        ## if you set this to TRUE, make sure you set num_cv_replications=1 and num_folds_cross_validation=1
     random_number_seed = if (is.na(g_args[1])) 1337 else as.integer(g_args[1]),
     nthreads_per_process = 1,
     flag_randomize_classifier_order = FALSE,
     flag_create_ec2_instances = FALSE,  ## don't set this to true if you set "flag_create_fork_cluster" to true
-    analysis_label = "xgboost_tuning",
+    analysis_label = "gwava_xgboost_tune",
     output_file_base_name = "cerenkov_ml_results",
     parallel_use_load_balancing = TRUE,
     debug_file_parallel=""              ## set to empty string for production run (makes error text go to stdout)
@@ -71,18 +71,18 @@ g_label_vec <- as.integer(as.character(g_feat_cerenkov2_df$label))
 
 ## ============================== load feature data; check for problems with feature data =================================
 
-##print("loading GWAVA data")
+print("loading GWAVA data")
 
-##load(file="features_GWAVA_osu18.Rdata") ## creates an R object called "g_feat_gwava_df"
-##stopifnot(g_feature_matrix_is_OK(g_feat_gwava_df))
-##stopifnot(g_snp_names == rownames(g_feat_gwava_df))
-##stopifnot(g_feat_cerenkov2_df$label == g_feat_gwava_df$label)
-##g_feat_gwava_matrix_sparse <- sparse.model.matrix(label ~ .-1, data=g_feat_gwava_df)
+load(file="features_gwava_osu18.Rdata") ## creates an R object called "g_feat_gwava_df"
+stopifnot(g_feature_matrix_is_OK(g_feat_gwava_df))
+stopifnot(g_snp_names == rownames(g_feat_gwava_df))
+stopifnot(g_feat_cerenkov2_df$label == g_feat_gwava_df$label)
+g_feat_gwava_matrix_sparse <- sparse.model.matrix(label ~ .-1, data=g_feat_gwava_df)
 
 ## build a list of the feature matrices that we will need
 g_classifier_feature_matrices_list <- list(
-   feat_cerenkov2_sparsematrix=g_feat_cerenkov2_matrix_sparse
-##   feat_GWAVA_sparsematrix=g_feat_gwava_matrix_sparse
+#x   feat_cerenkov2_sparsematrix=g_feat_cerenkov2_matrix_sparse,
+   feat_GWAVA_sparsematrix=g_feat_gwava_matrix_sparse
 )
 
 
@@ -106,8 +106,8 @@ g_classifier_functions_list <- list(
 ## free up memory
 rm(g_feat_cerenkov2_df)
 rm(g_feat_cerenkov2_matrix_sparse)
-##rm(g_feat_gwava_df)
-##rm(g_feat_gwava_matrix_sparse)
+rm(g_feat_gwava_df)
+rm(g_feat_gwava_matrix_sparse)
 
 
 ## ============================== make hyperparameter lists  =================================
@@ -144,14 +144,14 @@ g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
 ##                                      })
 
 
-## g_classifier_list_xgb_GWAVA <- lapply(g_hyperparameter_grid_list_xgb,
-##                                      function(p_hyp) {
-##                                          list(classifier_feature_matrix_name="feat_GWAVA_sparsematrix",
-##                                               classifier_function_name=ifelse(g_par$flag_xgb_importance, "XGB_importance", "XGB"),
-##                                               classifier_hyperparameter_set_type_name="XGB",
-##                                               classifier_set_name="GWAVA_XGB",
-##                                               classifier_hyperparameter_list=p_hyp)
-##                                      })
+g_classifier_list_xgb_GWAVA <- lapply(g_hyperparameter_grid_list_xgb,
+                                     function(p_hyp) {
+                                         list(classifier_feature_matrix_name="feat_GWAVA_sparsematrix",
+                                              classifier_function_name=ifelse(g_par$flag_xgb_importance, "XGB_importance", "XGB"),
+                                              classifier_hyperparameter_set_type_name="XGB",
+                                              classifier_set_name="GWAVA_XGB",
+                                              classifier_hyperparameter_list=p_hyp)
+                                     })
 
 
 
@@ -175,8 +175,8 @@ g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
 ## names, incorrect feature matrix names, etc.
 
 g_classifier_list <- c(
-    g_classifier_list_xgb_OSU
-#    g_classifier_list_xgb_GWAVA
+#    g_classifier_list_xgb_OSU,
+    g_classifier_list_xgb_GWAVA
 )
 
 ## ============================== run invariant machine-learning code =================================

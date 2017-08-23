@@ -47,11 +47,11 @@ g_par <- list(
     flag_xgb_importance = FALSE,       ## if you set this to TRUE, make sure you set num_cv_replications=1 and num_folds_cross_validation=1
     random_number_seed = if (is.na(g_args[1])) 1337 else as.integer(g_args[1]),
     nthreads_per_process = 1,
-    flag_randomize_classifier_order = FALSE,
+    flag_randomize_classifier_order = TRUE,
     flag_create_ec2_instances = FALSE,  ## don't set this to true if you set "flag_create_fork_cluster" to true
-    analysis_label = "xgboost_tuning",
+    analysis_label = "tune_custom_objective_function",
     output_file_base_name = "cerenkov_ml_results",
-    parallel_use_load_balancing = TRUE,
+    parallel_use_load_balancing = FALSE,
     debug_file_parallel=""              ## set to empty string for production run (makes error text go to stdout)
     )
 
@@ -91,14 +91,28 @@ source("cerenkov_ml_run_setup.R")
 
 ## ============================== make closures for classifiers  =================================
 
-g_classifier_function_xgboost <- g_make_classifier_function_xgboost(p_nthread=g_par$nthreads_per_process,
+g_classifier_function_xgboost_default <- g_make_classifier_function_xgboost(p_nthread=g_par$nthreads_per_process,
                                                                     g_get_perf_results,
                                                                     p_feature_importance_type=NULL,
                                                                     p_make_objective_function=function(...){"binary:logistic"},
                                                                     p_case_group_ids=g_snp_locus_ids)
 
+g_make_custom_xgboost_objective_avgrank <- g_make_make_custom_xgboost_objective_avgrank(g_snp_locus_ids,
+                                                                                        g_locus_to_snp_ids_map_list,
+                                                                                        g_get_temp_directory,
+                                                                                        g_make_cxx_function_with_lazy_compile)
+
+g_classifier_function_xgboost_custom <- g_make_classifier_function_xgboost(p_nthread=g_par$nthreads_per_process,
+                                                                    g_get_perf_results,
+                                                                    p_feature_importance_type=NULL,
+                                                                    p_make_objective_function=g_make_custom_xgboost_objective_avgrank,
+                                                                    p_case_group_ids=g_snp_locus_ids,
+                                                                    p_verbose=0)
+
+
 g_classifier_functions_list <- list(
-    XGB=g_classifier_function_xgboost
+    XGB=g_classifier_function_xgboost_default,
+    XGB_custom=g_classifier_function_xgboost_custom
 )
 
 ## ============================== assemble final list of feature matrices  =================================
@@ -114,18 +128,19 @@ rm(g_feat_cerenkov2_matrix_sparse)
 
 ## ------------------ xgboost hyperparameter lists --------------
 
+g_custom_objective_function_parameter_grid_list_xgb <- g_make_hyperparameter_grid_list(list(bandwidth=c(0.1, 0.5, 1)))
+
 g_hyperparameter_grid_list_xgb <- g_make_hyperparameter_grid_list(list(eta=c(0.05, 0.1, 0.15, 0.2),
-                                                                       nrounds=c(10, 20, 30, 40),
-                                                                       gamma=c(5, 10, 100, 200),
+                                                                       nrounds=c(20, 30, 40),
+                                                                       gamma=c(5, 10, 30, 100),
                                                                        lambda=c(0.1, 1.0, 5.0, 10.0),
-                                                                       subsample=c(0.75, 0.85, 1),
+                                                                       subsample=c(0.85, 1),
 #                                                                       colsample_bytree=c(0.75, 0.85, 1.0),
                                                                        base_score=g_class_count_frac_positive,
                                                                        scale_pos_weight=c(1.0, 14.45),
-                                                                       max_depth=c(5, 6, 7)))
+                                                                       max_depth=c(6, 7, 8)))
 
-
-g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
+g_classifier_list_xgb_OSU_default <- lapply(g_hyperparameter_grid_list_xgb,
                                      function(p_hyp) {
                                          list(classifier_feature_matrix_name="feat_cerenkov2_sparsematrix",
                                               classifier_function_name=ifelse(g_par$flag_xgb_importance, "XGB_importance", "XGB"),
@@ -134,14 +149,18 @@ g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
                                               classifier_hyperparameter_list=p_hyp)
                                      })
 
-## g_classifier_list_xgbcustom_OSU <- lapply(g_hyperparameter_grid_list_xgb,
-##                                      function(p_hyp) {
-##                                          list(classifier_feature_matrix_name="feat_cerenkov2_sparsematrix",
-##                                               classifier_function_name="XGB_custom",
-##                                               classifier_hyperparameter_set_type_name="XGB",
-##                                               classifier_set_name="OSU_XGB_custom",
-##                                               classifier_hyperparameter_list=p_hyp)
-##                                      })
+g_classifier_list_xgb_OSU_custom <- mapply(function(p_hyp, p_cust) {
+                                         list(classifier_feature_matrix_name="feat_cerenkov2_sparsematrix",
+                                              classifier_function_name="XGB_custom",
+                                              classifier_hyperparameter_set_type_name="XGB",
+                                              classifier_set_name="OSU_XGB_custom",
+                                              classifier_hyperparameter_list=p_hyp,
+                                              classifier_custom_objective_function_parameters_list=p_cust)
+                                          },
+                                         g_hyperparameter_grid_list_xgb,
+                                         g_custom_objective_function_parameter_grid_list_xgb,
+                                         SIMPLIFY=FALSE
+                                     )
 
 
 ## g_classifier_list_xgb_GWAVA <- lapply(g_hyperparameter_grid_list_xgb,
@@ -175,7 +194,8 @@ g_classifier_list_xgb_OSU <- lapply(g_hyperparameter_grid_list_xgb,
 ## names, incorrect feature matrix names, etc.
 
 g_classifier_list <- c(
-    g_classifier_list_xgb_OSU
+    g_classifier_list_xgb_OSU_default,
+    g_classifier_list_xgb_OSU_custom
 #    g_classifier_list_xgb_GWAVA
 )
 

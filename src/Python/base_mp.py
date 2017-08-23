@@ -743,7 +743,7 @@ def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
         rank_test["label"] = y_test.values
-        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="min")
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="average")
         avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
 
         result = {"auroc": auroc, "aupvr": aupvr, "avgrank": avgrank, "task_no": task_no}
@@ -806,7 +806,7 @@ def gwava_rf(dataset, hyperparameters, fold, fold_assign_method, task_no):
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
         rank_test["label"] = y_test.values
-        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="min")
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="average")
         avgrank = rank_test.loc[rank_test["label"] == 1]["rank"].mean()
 
         result = {"auroc": auroc, "aupvr": aupvr, "avgrank": avgrank, "task_no": task_no}
@@ -859,7 +859,7 @@ def gwava_xgb(dataset, hyperparameters, fold, fold_assign_method, task_no):
         rank_test = pd.DataFrame(data=y_test_probs, columns=["probs"])
         rank_test["group_id"] = dataset.loc[X_test.index.values, "group_id"].values
         rank_test["label"] = y_test.values
-        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="min")
+        rank_test["rank"] = rank_test.groupby("group_id")["probs"].rank(ascending=False, method="average")
         avgrank = rank_test.loc[rank_test["label"]==1]["rank"].mean()
         
         result = {"auroc": auroc, "aupvr": aupvr, "avgrank": avgrank, "task_no": task_no}

@@ -41,7 +41,7 @@ g_par <- list(
     flag_randomize_workplan_order = FALSE
     )
 
-source("cerenkov_ml_base.R")
+source("cerenkov_ml_base_functions.R")
 
 ## ============================== set random number seed =================================
 print(sprintf("setting random number seed to: %d", g_par$random_number_seed))
