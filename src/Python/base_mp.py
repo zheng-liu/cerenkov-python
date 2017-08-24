@@ -155,15 +155,16 @@ def locus_group(dataset, cutoff_bp):
 
         # calculate the difference of adjacent ChromCoord
         SNP_chrom["group_id"] = SNP_chrom["coord"] - SNP_chrom["coord"].shift()
-        SNP_chrom.ix[0, "group_id"] = 1.0  # fill in the missing first difference of ChromCoord
+        # SNP_chrom.ix[0, "group_id"] = 1.0  # fill in the missing first difference of ChromCoord
         SNP_chrom["group_id"] = SNP_chrom["group_id"] > cutoff_bp  # True if distance > cutoff_bp; else False
         SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(int)  # transform to integer
+        SNP_chrom.ix[0, "group_id"] = 1.0  # fill in the missing first difference of ChromCoord
         SNP_chrom["group_id"] = SNP_chrom["group_id"].cumsum(axis=0)  # cumsum the "group_id" column
         SNP_chrom["group_id"] = SNP_chrom["group_id"].astype(str)
         SNP_chrom["group_id"] = chrom + "_" + SNP_chrom["group_id"]  # add chrom prefix to group id
         
         feat.loc[SNP_chrom.index, "group_id"] = SNP_chrom["group_id"]  # assign values back to feature matrix
-    # del feat["coord"]
+
     return feat
 
 
@@ -213,8 +214,8 @@ def locus_sampling(dataset, n_rep, n_fold, cutoff_bp=50000, slope_allowed=0.5, s
 
             # sample from allowed indexes
             if len(ind_allowed) > 1:
-                probs = np.array([(1 - (fold_case_num[i] / max_fold_case_num) *
-                                   (1 - (fold_pos_num[i] / max_fold_pos_num))) for i in ind_allowed])
+                probs = np.array([(1 - (fold_case_num[i] / max_fold_case_num)) *
+                                  (1 - (fold_pos_num[i] / max_fold_pos_num)) for i in ind_allowed])
                 norm_probs = probs / probs.sum()  # np.random.choice need probabilities summed up to 1.0
                 ind_selected = rs.choice(ind_allowed, size=1, p=norm_probs)[0]
             else:
@@ -629,86 +630,6 @@ def cerenkov_ml(task_table, method_table, fold_table, hp_table, data_table, fold
 
 
 
-# def cerenkov_analysis(fold_assign_method):
-
-#     sns.set(style="whitegrid", color_codes=True)
-
-#     # //TODO check if all the files are there
-#     method_table = pickle.load(open("method_table.p", "rb"))
-#     data_table = pickle.load(open("data_table.p", "rb"))
-#     fold_table = pickle.load(open("fold_table.p", "rb"))
-#     hp_table = pickle.load(open("hp_table.p", "rb"))
-#     task_table = pickle.load(open("task_table.p", "rb"))
-    
-#     analysis = {"hp_optimal":{}}
-
-#     if fold_assign_method == "SNP":
-
-#     	# analyze results
-#         plot_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold", "auroc", "aupvr"])
-
-#         for i, gb_i in task_table.groupby(["method"]):
-#             method = i
-#             hp_optimal = 0
-#             aupvr_optimal = -1.0
-
-#             for j, gb_j in gb_i.groupby(["hp"]):
-#                 if gb_j["aupvr"].mean() > aupvr_optimal:
-#                     hp_optimal = j
-#                     aupvr_optimal = gb_j["aupvr"].mean()
-            
-#             analysis["hp_optimal"][i] = hp_table[i].ix[j, "hp"]
-#             plot_table = plot_table.append(task_table.loc[(task_table["method"] == method) & (task_table["hp"] == hp_optimal)], ignore_index=True)
-        
-#         analysis["plot_table"] = plot_table
-#         pickle.dump(analysis, open("analysis.p", "wb"))
-#         print "[INFO] dump to analysis.p!"
-        
-#         # plot results
-#         plot_auroc = sns.boxplot(x="method", y="auroc", data=plot_table).get_figure()
-#         plot_auroc.savefig("auroc.pdf")
-#         print "[INFO] auroc figure saved to auroc.pdf!"
-        
-#         plot_auroc.clf()
-
-#         plot_aupvr = sns.boxplot(x="method", y="aupvr", data=plot_table).get_figure()
-#         plot_aupvr.savefig("aupvr.pdf")
-#         print "[INFO] aupvr figure saved to aupvr.pdf!"
-
-#     elif fold_assign_method == "LOCUS":
-
-#         plot_table = pd.DataFrame(columns=["method", "hp", "data", "fold_index", "i_rep", "i_fold", "avgrank"])
-
-#         for i, gb_i in task_table.groupby(["method"]):
-#             method = i
-#             hp_optimal = 0
-#             avgrank_optimal = float("inf")
-
-#             for j, gb_j in gb_i.groupby(["hp"]):
-#                 if gb_j["avgrank"].mean() < avgrank_optimal:
-#                     hp_optimal = j
-#                     avgrank_optimal = gb_j["avgrank"].mean()
-            
-#             analysis["hp_optimal"][i] = hp_table[i].ix[j, "hp"]
-#             plot_table = plot_table.append(task_table.loc[(task_table["method"] == method) & (task_table["hp"] == hp_optimal)], ignore_index=True)
-
-#         analysis["plot_table"] = plot_table
-#         pickle.dump(analysis, open("analysis.p", "wb"))
-#         print "[INFO] dump to analysis.p!"
-
-#         # plot results
-#         plot_avgrank = sns.boxplot(x="method", y="avgrank", data=plot_table).get_figure()
-#         plot_avgrank.savefig("avgrank.pdf")
-#         print "[INFO] avgrank figure saved to avgrank.pdf!"
-
-#     else:
-#         print "Invalid fold assign method!"
-#         exit(0)
-
-
-
-
-
 # machine learning methods
 
 def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
@@ -731,8 +652,8 @@ def cerenkov17(dataset, hyperparameters, fold, fold_assign_method, task_no):
     clf_cerenkov17 = xgboost.XGBClassifier(**hyperparameters)
     clf_cerenkov17.fit(X_train, y_train)
 
-    y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_ == 1] # //TODO we should guarantee that the y_test_pred should have index as SNP IDs
-    
+    y_test_probs = clf_cerenkov17.predict_proba(X_test)[:, clf_cerenkov17.classes_ == 1] # y_test_pred doesn't have index as SNP IDs
+
     if fold_assign_method == "LOCUS":
 
         fpr, tpr, _ = sklearn.metrics.roc_curve(y_test, y_test_probs)
